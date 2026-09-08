@@ -1,7 +1,8 @@
 import { Client, Events } from 'discord.js';
+import { logger } from '../utils/logger';
 
 export function registerReadyEvent(client: Client): void {
   client.once(Events.ClientReady, (readyClient) => {
-    console.log(`Logged in as ${readyClient.user.tag}`);
+    logger.info(`Logged in as ${readyClient.user.tag}`);
   });
 }

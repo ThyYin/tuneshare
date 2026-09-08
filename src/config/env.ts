@@ -17,3 +17,30 @@ export const env = {
   discordClientId: requireEnv('DISCORD_CLIENT_ID'),
   discordGuildId: requireEnv('DISCORD_GUILD_ID'),
 };
+
+export function requireSupabaseEnv(): { supabaseUrl: string; supabaseKey: string } {
+  return {
+    supabaseUrl: requireEnv('SUPABASE_URL'),
+    supabaseKey: requireEnv('SUPABASE_KEY'),
+  };
+}
+
+function optionalEnv(name: string): string | null {
+  const value = process.env[name]?.trim();
+  return value ? value : null;
+}
+
+export function getSpotifyCredentials(): { clientId: string; clientSecret: string } | null {
+  const clientId = optionalEnv('SPOTIFY_CLIENT_ID');
+  const clientSecret = optionalEnv('SPOTIFY_CLIENT_SECRET');
+
+  if (!clientId || !clientSecret) {
+    return null;
+  }
+
+  return { clientId, clientSecret };
+}
+
+export function getYouTubeApiKey(): string | null {
+  return optionalEnv('YOUTUBE_API_KEY');
+}
