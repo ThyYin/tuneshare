@@ -215,7 +215,7 @@ function readPrefixString(name: string, rawArgs: string, optionNames: Set<string
     return null;
   }
 
-  if (name === 'song_url') {
+  if (name === 'song_url' || name === 'song') {
     return extractSongUrl(cleaned);
   }
 
@@ -281,11 +281,10 @@ function toDiscordPayload(payload: CommandReplyInput): CommandReplyPayload {
 function missingArgMessage(optionName: string): string {
   switch (optionName) {
     case 'song_url':
-      return UserMessages.missingSongUrl;
+    case 'song':
+      return UserMessages.missingSongQuery;
     case 'artistname':
       return UserMessages.missingArtist;
-    case 'song':
-      return UserMessages.missingUnfavQuery;
     case 'user':
       return UserMessages.missingUser;
     default:

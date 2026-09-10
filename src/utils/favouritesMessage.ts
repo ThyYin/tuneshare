@@ -1,6 +1,6 @@
 import { listArtistCounts, listFavourites } from '../services/favourites';
 import { ALL_ARTISTS_FILTER, artistFilterKey, resolveArtistFilter } from './customIds';
-import { artistFilterSelectRow, favouritesListEmbed, favouritesPaginationRow } from './embeds';
+import { artistFilterSelectRow, favouritesListEmbeds, favouritesPaginationRow } from './embeds';
 
 export async function buildFavouritesMessage(options: {
   targetUserId: string;
@@ -23,7 +23,7 @@ export async function buildFavouritesMessage(options: {
   ].filter((row) => row !== null);
 
   return {
-    embeds: [favouritesListEmbed(options.displayName, pageData, options.isOwnList)],
+    embeds: favouritesListEmbeds(options.displayName, pageData, options.isOwnList),
     components,
   };
 }

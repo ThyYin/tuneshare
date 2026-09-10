@@ -10,16 +10,16 @@ import {
 import { MAX_ARTIST_SELECT_OPTIONS } from '../constants';
 import type { ArtistProfile } from '../services/artists';
 import type { Command } from '../types/command';
-import type { SongInfo } from '../services/music/types';
+import type { SongInfo, SongSearchHit } from '../services/music/types';
 import type { ArtistCount, Favourite, PaginatedArtists, PaginatedFavourites, Platform } from '../types/favourite';
-import { ALL_ARTISTS_FILTER, artistFilterKey } from './customIds';
+import { stripArtistFromTitle } from '../services/music/trackCredits';
+import { ALL_ARTISTS_FILTER, artistFilterKey, searchPickButtonId, unfavSongButtonId, type SongSearchAction } from './customIds';
 
 const SPOTIFY_COLOR = 0x1db954;
-const YOUTUBE_COLOR = 0xff0000;
+const YOUTUBE_COLOR = 0x1db954;
 const DEFAULT_COLOR = 0x5865f2;
 
 const HELP_COMMAND_ORDER = [
-  'help',
   'fav',
   'favs',
   'view',
@@ -27,16 +27,17 @@ const HELP_COMMAND_ORDER = [
   'info',
   'topartists',
   'artist',
+  'help',
   'ping',
 ];
 
 const HELP_USAGE_NOTES: Record<string, string> = {
-  fav: 'Favourite a song by pasting a full Spotify / YT Music song link.',
+  fav: 'Favourite a song by typing its name, or paste a Spotify / YT Music song link.',
   favs: 'Display your list of favourited songs.',
   view: 'Display a server member\'s list of favourited songs.',
-  unfav: 'Unfavourite an existing song from your list.',
-  info: 'Display song information by pasting a Spotify / YT Music song link.',
-  topartists: 'Display the top artists from your favourited songs by leaving the user blank for your own ranking, or view someone else\'s.',
+  unfav: 'Unfavourite a song.\nSlash: start typing to pick it.\nPrefix: `t!unfav` shows your list so you can pick one.',
+  info: 'Look up a song by name or paste a Spotify / YT Music link.',
+  topartists: 'Display the top artists from your favourited songs by leaving the user blank for your own ranking, or view someone else\'s by mentioning their user.',
   artist: 'Display an artist\'s info by typing their name.',
   ping: 'Annie are you okay?',
   help: 'Shows this list.',
@@ -45,9 +46,9 @@ const HELP_USAGE_NOTES: Record<string, string> = {
 export function platformLabel(platform: Platform): string {
   switch (platform) {
     case 'spotify':
-      return '🟢 Spotify';
+      return 'Spotify';
     case 'youtube_music':
-      return '🔴 YouTube Music';
+      return 'YouTube Music';
   }
 }
 
@@ -75,48 +76,157 @@ export function addedFavouriteEmbed(favourite: Favourite, metadataMissing: boole
   return embed;
 }
 
+function platformColor(platform: Platform): number {
+  return platform === 'spotify' ? SPOTIFY_COLOR : YOUTUBE_COLOR;
+}
+
+function applyThumbnail(embed: EmbedBuilder, url: string | null | undefined): void {
+  if (url) {
+    embed.setThumbnail(url);
+  }
+}
+
 export function removedFavouriteEmbed(favourite: Favourite): EmbedBuilder {
-  return new EmbedBuilder()
+  const embed = new EmbedBuilder()
     .setColor(DEFAULT_COLOR)
     .setTitle('🗑️ Removed from your favourites')
     .setDescription(`🎵 **${formatSong(favourite)}**\n${platformLabel(favourite.platform)}`)
     .setURL(favourite.url);
+
+  applyThumbnail(embed, favourite.thumbnailUrl);
+  return embed;
 }
 
-export function favouritesListEmbed(
+export function favouritesListEmbeds(
   displayName: string,
   pageData: PaginatedFavourites,
   isOwnList: boolean,
-): EmbedBuilder {
-  const embed = new EmbedBuilder()
-    .setColor(DEFAULT_COLOR)
-    .setTitle(`🎵 ${displayName}'s Favourite Songs`);
+  options?: { title?: string },
+): EmbedBuilder[] {
+  const title = options?.title ?? `🎵 ${displayName}'s Favourite Songs`;
 
   if (pageData.total === 0) {
-    embed.setDescription(
-      pageData.artistFilter
-        ? `${displayName} has no favourite songs by ${pageData.artistFilter}.`
-        : isOwnList
-          ? "You don't have any favourite songs yet.\nAdd one with `/fav`."
-          : `${displayName} doesn't have any favourite songs yet.`,
-    );
-    return embed;
+    return [
+      new EmbedBuilder()
+        .setColor(DEFAULT_COLOR)
+        .setTitle(title)
+        .setDescription(
+          pageData.artistFilter
+            ? `${displayName} has no favourite songs by ${pageData.artistFilter}.`
+            : isOwnList
+              ? "You don't have any favourite songs yet.\nAdd one with `/fav`."
+              : `${displayName} doesn't have any favourite songs yet.`,
+        ),
+    ];
   }
 
   const start = (pageData.page - 1) * pageData.pageSize;
-  const lines = pageData.items.map((song, index) => {
-    const number = start + index + 1;
-    return `${number}. **${formatSong(song)}**\n${song.url}`;
-  });
-
-  embed.setDescription(lines.join('\n\n'));
-
   const footer = pageData.artistFilter
     ? `Page ${pageData.page}/${pageData.totalPages} · ${pageData.artistFilter}`
     : `Page ${pageData.page}/${pageData.totalPages}`;
-  embed.setFooter({ text: footer });
 
-  return embed;
+  return pageData.items.map((song, index) => {
+    const number = start + index + 1;
+    const embed = new EmbedBuilder()
+      .setColor(platformColor(song.platform))
+      .setDescription(
+        `${number}. **${formatSong(song)}**\n${platformLabel(song.platform)}\n${song.url}`,
+      )
+      .setURL(song.url);
+
+    if (index === 0) {
+      embed.setTitle(title);
+    }
+
+    applyThumbnail(embed, song.thumbnailUrl);
+
+    if (index === pageData.items.length - 1) {
+      embed.setFooter({ text: footer });
+    }
+
+    return embed;
+  });
+}
+
+export function songSearchEmbeds(query: string, results: SongSearchHit[]): EmbedBuilder[] {
+  return results.map((song, index) => {
+    const embed = new EmbedBuilder()
+      .setColor(platformColor(song.platform))
+      .setDescription(
+        [
+          `${index + 1}. **${formatTrack(song.artist, song.title)}**`,
+          platformLabel(song.platform),
+          song.album ? `💿 ${truncate(song.album, 80)}` : null,
+        ]
+          .filter(Boolean)
+          .join('\n'),
+      )
+      .setURL(song.canonicalUrl);
+
+    if (index === 0) {
+      embed.setTitle(`🔍 Results for "${truncate(query, 80)}"`);
+    }
+
+    applyThumbnail(embed, song.thumbnailUrl);
+    return embed;
+  });
+}
+
+export function songSearchPickRow(
+  action: SongSearchAction,
+  userId: string,
+  results: SongSearchHit[],
+): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    ...results.map((song, index) =>
+      new ButtonBuilder()
+        .setCustomId(searchPickButtonId(action, userId, song.platform, song.platformSongId))
+        .setLabel(String(index + 1))
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  );
+}
+
+export function unfavPickRow(
+  userId: string,
+  songs: Favourite[],
+  startIndex: number,
+): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    ...songs.map((song, index) =>
+      new ButtonBuilder()
+        .setCustomId(unfavSongButtonId(userId, song.id))
+        .setLabel(String(startIndex + index + 1))
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  );
+}
+
+export function unfavPaginationRow(
+  userId: string,
+  pageData: PaginatedFavourites,
+): ActionRowBuilder<ButtonBuilder> | null {
+  if (pageData.totalPages <= 1) {
+    return null;
+  }
+
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`unfav-page:${userId}:${pageData.page - 1}`)
+      .setLabel('◀ Previous')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(pageData.page <= 1),
+    new ButtonBuilder()
+      .setCustomId(`unfav-page:noop:${userId}`)
+      .setLabel(`${pageData.page} / ${pageData.totalPages}`)
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(true),
+    new ButtonBuilder()
+      .setCustomId(`unfav-page:${userId}:${pageData.page + 1}`)
+      .setLabel('Next ▶')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(pageData.page >= pageData.totalPages),
+  );
 }
 
 export function favouritesPaginationRow(
@@ -286,7 +396,7 @@ export function helpEmbed(commandList: Command[]): EmbedBuilder {
         ...lines,
       ].join('\n\n'),
     )
-    .setFooter({ text: 'p.s. Currently only supports Spotify and YT Music links.' });
+    .setFooter({ text: 'p.s. Type a song name, or paste a Spotify / YT Music link.' });
 }
 
 function formatCommandUsage(data: {
@@ -310,13 +420,17 @@ function formatCommandUsage(data: {
 }
 
 export function formatSong(favourite: Pick<Favourite, 'artist' | 'songTitle'>): string {
-  return `${truncate(favourite.artist, 80)} — ${truncate(favourite.songTitle, 80)}`;
+  return formatTrack(favourite.artist, favourite.songTitle);
+}
+
+export function formatTrack(artist: string, title: string): string {
+  return `${truncate(artist, 80)} — ${truncate(stripArtistFromTitle(title, artist), 80)}`;
 }
 
 export function songInfoEmbed(info: SongInfo): EmbedBuilder {
   const embed = new EmbedBuilder()
     .setColor(info.platform === 'spotify' ? SPOTIFY_COLOR : YOUTUBE_COLOR)
-    .setTitle(truncate(info.title, 240))
+    .setTitle(truncate(stripArtistFromTitle(info.title, info.artist), 240))
     .setURL(info.canonicalUrl)
     .setDescription(platformLabel(info.platform));
 

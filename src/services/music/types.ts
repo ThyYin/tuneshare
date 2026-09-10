@@ -26,6 +26,8 @@ export interface ResolvedSong extends ParsedSongUrl, SongMetadata {
   metadataMissing: boolean;
 }
 
+export interface SongSearchHit extends ParsedSongUrl, SongMetadata {}
+
 export interface SongInfo extends ParsedSongUrl, SongMetadata {
   releaseYear: string | null;
   audience: AudienceStat[];

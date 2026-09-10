@@ -51,3 +51,43 @@ export function firstKnownArtist(...names: Array<string | null | undefined>): st
 
   return 'Unknown Artist';
 }
+
+const TITLE_SEPARATOR = '[-–—|:•/]+';
+
+export function stripArtistFromTitle(title: string, artist: string): string {
+  const original = title.replace(/\s+/g, ' ').trim();
+  const cleanedArtist = profileName(artist);
+  const compactArtist = cleanedArtist.replace(/\s+/g, '');
+
+  if (!original || isUnknownArtist(cleanedArtist) || compactArtist.length < 2) {
+    return original;
+  }
+
+  const candidates = [cleanedArtist];
+  const withoutThe = cleanedArtist.replace(/^the\s+/i, '').trim();
+  if (withoutThe && withoutThe.toLowerCase() !== cleanedArtist.toLowerCase()) {
+    candidates.push(withoutThe);
+  }
+
+  let result = original;
+  for (const name of candidates) {
+    result = stripArtistOnce(result, name);
+  }
+
+  return result.trim() || original;
+}
+
+function stripArtistOnce(title: string, artist: string): string {
+  const pattern = artist
+    .trim()
+    .split(/\s+/)
+    .map((part) => part.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'))
+    .join('\\s+');
+
+  const prefix = new RegExp(`^${pattern}\\s*(?:${TITLE_SEPARATOR}\\s*|[\"“']\\s*)`, 'i');
+  const suffix = new RegExp(`\\s*${TITLE_SEPARATOR}\\s*${pattern}$`, 'i');
+
+  let next = title.replace(prefix, '').replace(suffix, '').trim();
+  next = next.replace(/^["“']+|["”']+$/g, '').trim();
+  return next || title;
+}

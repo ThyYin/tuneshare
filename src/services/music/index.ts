@@ -1,14 +1,41 @@
 import { MAX_SONG_URL_LENGTH } from '../../constants';
+import type { Platform } from '../../types/favourite';
 import { UserFacingError, UserMessages } from '../../utils/errors';
 import { logger } from '../../utils/logger';
 import { spotifyProvider } from './spotify';
+import { stripArtistFromTitle } from './trackCredits';
 import type { MusicProvider, ParsedSongUrl, ResolvedSong, SongInfo } from './types';
 import { youtubeMusicProvider } from './youtubeMusic';
 
 const providers: MusicProvider[] = [spotifyProvider, youtubeMusicProvider];
 
+export function looksLikeMusicUrl(raw: string): boolean {
+  const trimmed = unwrapLink(raw);
+  if (!trimmed) {
+    return false;
+  }
+
+  if (/^https?:\/\//i.test(trimmed)) {
+    return true;
+  }
+
+  const url = toUrl(trimmed);
+  return Boolean(url && providers.some((item) => item.canHandle(url)));
+}
+
+export function parsedSongFromParts(platform: Platform, platformSongId: string): ParsedSongUrl {
+  return {
+    platform,
+    platformSongId,
+    canonicalUrl:
+      platform === 'spotify'
+        ? `https://open.spotify.com/track/${platformSongId}`
+        : `https://music.youtube.com/watch?v=${platformSongId}`,
+  };
+}
+
 export function parseMusicUrl(rawUrl: string): ParsedSongUrl {
-  const trimmed = rawUrl.trim();
+  const trimmed = unwrapLink(rawUrl);
 
   if (!trimmed || trimmed.length > MAX_SONG_URL_LENGTH) {
     throw new UserFacingError(UserMessages.invalidUrl);
@@ -56,6 +83,7 @@ export async function hydrateSong(song: ParsedSongUrl): Promise<ResolvedSong> {
     return {
       ...song,
       ...metadata,
+      title: stripArtistFromTitle(metadata.title, metadata.artist),
       metadataMissing: false,
     };
   } catch (error) {
@@ -91,7 +119,11 @@ export async function fetchSongInfo(song: ParsedSongUrl): Promise<SongInfo> {
       throw new UserFacingError(UserMessages.unsupportedPlatform);
     }
 
-    return await provider.fetchInfo(song);
+    const info = await provider.fetchInfo(song);
+    return {
+      ...info,
+      title: stripArtistFromTitle(info.title, info.artist),
+    };
   } catch (error) {
     if (error instanceof UserFacingError) {
       throw error;
@@ -105,6 +137,10 @@ export async function fetchSongInfo(song: ParsedSongUrl): Promise<SongInfo> {
 
     throw new UserFacingError(UserMessages.infoFailed);
   }
+}
+
+function unwrapLink(value: string): string {
+  return value.trim().replace(/^<([^>]+)>$/, '$1').trim();
 }
 
 function toUrl(value: string): URL | null {

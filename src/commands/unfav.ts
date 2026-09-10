@@ -1,8 +1,10 @@
 import { SlashCommandBuilder } from 'discord.js';
 import { removeFavourite, searchFavourites } from '../services/favourites';
 import type { Command } from '../types/command';
+import { getDisplayName } from '../utils/displayName';
 import { formatSong, platformLabel, removedFavouriteEmbed } from '../utils/embeds';
 import { UserFacingError, UserMessages } from '../utils/errors';
+import { buildUnfavMatchMessage, buildUnfavPickerMessage } from '../utils/unfavPicker';
 
 const UUID_PATTERN =
   /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i;
@@ -14,8 +16,8 @@ export const unfav: Command = {
     .addStringOption((option) =>
       option
         .setName('song')
-        .setDescription('Start typing a title or artist, then pick the song')
-        .setRequired(true)
+        .setDescription('Start typing a title or artist, or skip this to pick from your list')
+        .setRequired(false)
         .setAutocomplete(true),
     ),
 
@@ -32,13 +34,27 @@ export const unfav: Command = {
   },
 
   async execute(ctx) {
-    const songQuery = ctx.getString('song', true);
+    const songQuery = ctx.getString('song', false)?.trim() ?? '';
+
     if (!songQuery) {
-      throw new UserFacingError(UserMessages.missingUnfavQuery);
+      await ctx.deferReply();
+      const message = await buildUnfavPickerMessage({
+        userId: ctx.user.id,
+        displayName: getDisplayName(ctx.user, ctx.member),
+        page: 1,
+      });
+      await ctx.editReply(message);
+      return;
     }
+
     const songId = UUID_PATTERN.test(songQuery)
       ? songQuery
       : await resolveFavouriteId(ctx.user.id, songQuery);
+
+    if (Array.isArray(songId)) {
+      await ctx.reply(buildUnfavMatchMessage(ctx.user.id, songId));
+      return;
+    }
 
     const favourite = await removeFavourite(songId, ctx.user.id);
 
@@ -48,7 +64,10 @@ export const unfav: Command = {
   },
 };
 
-async function resolveFavouriteId(userId: string, query: string): Promise<string> {
+async function resolveFavouriteId(
+  userId: string,
+  query: string,
+): Promise<string | Awaited<ReturnType<typeof searchFavourites>>> {
   const matches = await searchFavourites(userId, query);
 
   if (matches.length === 0) {
@@ -71,12 +90,7 @@ async function resolveFavouriteId(userId: string, query: string): Promise<string
     return matches[0].id;
   }
 
-  const preview = matches
-    .slice(0, 5)
-    .map((favourite, index) => `${index + 1}. ${formatSong(favourite)}`)
-    .join('\n');
-
-  throw new UserFacingError(`${UserMessages.unfavMultiple}\n${preview}`);
+  return matches;
 }
 
 function truncateChoice(value: string): string {

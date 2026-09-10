@@ -8,20 +8,32 @@ import {
   type Interaction,
   type StringSelectMenuInteraction,
 } from 'discord.js';
+import { saveSongFromPick } from '../commands/fav';
 import { commands } from '../commands';
-import { listTopArtists } from '../services/favourites';
+import { listTopArtists, removeFavourite } from '../services/favourites';
+import { fetchSongInfo, parsedSongFromParts } from '../services/music';
 import {
   parseFavouritesButtonId,
   parseFavouritesFilterSelectId,
+  parseSearchPickButtonId,
   parseTopArtistsButtonId,
+  parseUnfavPageButtonId,
+  parseUnfavSongButtonId,
   ALL_ARTISTS_FILTER,
 } from '../utils/customIds';
 import { createInteractionContext } from '../utils/commandContext';
 import { getDisplayName } from '../utils/displayName';
-import { topArtistsEmbed, topArtistsPaginationRow } from '../utils/embeds';
+import {
+  addedFavouriteEmbed,
+  removedFavouriteEmbed,
+  songInfoEmbed,
+  topArtistsEmbed,
+  topArtistsPaginationRow,
+} from '../utils/embeds';
 import { UserFacingError, UserMessages } from '../utils/errors';
 import { buildFavouritesMessage } from '../utils/favouritesMessage';
 import { logger } from '../utils/logger';
+import { buildUnfavPickerMessage } from '../utils/unfavPicker';
 
 export function registerInteractionCreateEvent(client: Client): void {
   client.on(Events.InteractionCreate, async (interaction) => {
@@ -97,6 +109,30 @@ async function handleSelectMenu(interaction: StringSelectMenuInteraction): Promi
 }
 
 async function handleButton(interaction: ButtonInteraction): Promise<void> {
+  const searchPick = parseSearchPickButtonId(interaction.customId);
+  if (searchPick) {
+    await handleSearchPick(interaction, searchPick);
+    return;
+  }
+
+  const unfavSong = parseUnfavSongButtonId(interaction.customId);
+  if (unfavSong) {
+    await handleUnfavPick(interaction, unfavSong.userId, unfavSong.songId);
+    return;
+  }
+
+  const unfavPage = parseUnfavPageButtonId(interaction.customId);
+  if (unfavPage) {
+    requirePickerOwner(interaction.user.id, unfavPage.userId);
+    const message = await buildUnfavPickerMessage({
+      userId: unfavPage.userId,
+      displayName: getDisplayName(interaction.user, interaction.member),
+      page: unfavPage.page,
+    });
+    await interaction.update(message);
+    return;
+  }
+
   const topArtists = parseTopArtistsButtonId(interaction.customId);
   if (topArtists) {
     const pageData = await listTopArtists(topArtists.targetUserId, topArtists.page);
@@ -125,6 +161,66 @@ async function handleButton(interaction: ButtonInteraction): Promise<void> {
     favourites.artistKey,
   );
   await interaction.update(message);
+}
+
+async function handleSearchPick(
+  interaction: ButtonInteraction,
+  pick: NonNullable<ReturnType<typeof parseSearchPickButtonId>>,
+): Promise<void> {
+  requirePickerOwner(interaction.user.id, pick.userId);
+  await interaction.deferUpdate();
+
+  const parsed = parsedSongFromParts(pick.platform, pick.platformSongId);
+
+  try {
+    if (pick.action === 'fav') {
+      const result = await saveSongFromPick(interaction.user.id, pick.platform, pick.platformSongId);
+      await interaction.editReply({
+        content: null,
+        embeds: [addedFavouriteEmbed(result.favourite, result.metadataMissing)],
+        components: [],
+      });
+      return;
+    }
+
+    const details = await fetchSongInfo(parsed);
+    await interaction.editReply({
+      content: null,
+      embeds: [songInfoEmbed(details)],
+      components: [],
+    });
+  } catch (error) {
+    if (error instanceof UserFacingError && error.userMessage === UserMessages.duplicate) {
+      await interaction.followUp({
+        content: error.userMessage,
+        flags: MessageFlags.Ephemeral,
+      });
+      return;
+    }
+
+    throw error;
+  }
+}
+
+async function handleUnfavPick(
+  interaction: ButtonInteraction,
+  ownerId: string,
+  songId: string,
+): Promise<void> {
+  requirePickerOwner(interaction.user.id, ownerId);
+
+  const favourite = await removeFavourite(songId, interaction.user.id);
+  await interaction.update({
+    content: null,
+    embeds: [removedFavouriteEmbed(favourite)],
+    components: [],
+  });
+}
+
+function requirePickerOwner(actorId: string, ownerId: string): void {
+  if (actorId !== ownerId) {
+    throw new UserFacingError(UserMessages.pickerNotYours);
+  }
 }
 
 async function buildFavouritesPageUpdate(

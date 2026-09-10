@@ -10,7 +10,7 @@ import type {
 } from '../types/favourite';
 import { UserFacingError, UserMessages } from '../utils/errors';
 import { logger } from '../utils/logger';
-import { artistGroupKey, isUnknownArtist, preferredArtistName } from './music/trackCredits';
+import { artistGroupKey, isUnknownArtist, preferredArtistName, stripArtistFromTitle } from './music/trackCredits';
 import { fetchSpotifyProfileArtist } from './music/spotify';
 import { fetchYouTubeMusicArtist } from './music/youtubeMusicArtist';
 
@@ -293,53 +293,50 @@ async function artistFilterNames(discordUserId: string, artist: string): Promise
 }
 
 async function repairFavouriteRow(row: FavouriteRow, siblings: FavouriteRow[]): Promise<FavouriteRow> {
+  let next = row;
+
   if (row.platform === 'spotify') {
-    if (!isUnknownArtist(row.artist)) {
-      return row;
-    }
-
-    try {
-      const profileArtist = await fetchSpotifyProfileArtist(row.platform_song_id);
-      if (profileArtist && profileArtist !== row.artist) {
-        return { ...row, artist: profileArtist };
+    if (isUnknownArtist(row.artist)) {
+      try {
+        const profileArtist = await fetchSpotifyProfileArtist(row.platform_song_id);
+        if (profileArtist && profileArtist !== row.artist) {
+          next = { ...row, artist: profileArtist };
+        }
+      } catch (error) {
+        logger.warn('Failed to refresh Spotify artist profile', {
+          id: row.id,
+          error: error instanceof Error ? error.message : 'unknown',
+        });
       }
-    } catch (error) {
-      logger.warn('Failed to refresh Spotify artist profile', {
-        id: row.id,
-        error: error instanceof Error ? error.message : 'unknown',
-      });
     }
+  } else if (row.platform === 'youtube_music') {
+    const key = artistGroupKey(row.artist);
+    const hasNameVariants = siblings.some(
+      (other) => other.id !== row.id && artistGroupKey(other.artist) === key && other.artist !== row.artist,
+    );
+    const looksLikeChannelHandle = /vevo/i.test(row.artist) || /-\s*topic$/i.test(row.artist);
 
-    return row;
-  }
-
-  if (row.platform !== 'youtube_music') {
-    return row;
-  }
-
-  const key = artistGroupKey(row.artist);
-  const hasNameVariants = siblings.some(
-    (other) => other.id !== row.id && artistGroupKey(other.artist) === key && other.artist !== row.artist,
-  );
-  const looksLikeChannelHandle = /vevo/i.test(row.artist) || /-\s*topic$/i.test(row.artist);
-
-  if (!isUnknownArtist(row.artist) && !hasNameVariants && !looksLikeChannelHandle) {
-    return row;
-  }
-
-  try {
-    const profileArtist = await fetchYouTubeMusicArtist(row.platform_song_id);
-    if (profileArtist && profileArtist !== row.artist) {
-      return { ...row, artist: profileArtist };
+    if (isUnknownArtist(row.artist) || hasNameVariants || looksLikeChannelHandle) {
+      try {
+        const profileArtist = await fetchYouTubeMusicArtist(row.platform_song_id);
+        if (profileArtist && profileArtist !== row.artist) {
+          next = { ...row, artist: profileArtist };
+        }
+      } catch (error) {
+        logger.warn('Failed to refresh YouTube Music artist profile', {
+          id: row.id,
+          error: error instanceof Error ? error.message : 'unknown',
+        });
+      }
     }
-  } catch (error) {
-    logger.warn('Failed to refresh YouTube Music artist profile', {
-      id: row.id,
-      error: error instanceof Error ? error.message : 'unknown',
-    });
   }
 
-  return row;
+  const cleanedTitle = stripArtistFromTitle(next.song_title, next.artist);
+  if (cleanedTitle !== next.song_title) {
+    return { ...next, song_title: cleanedTitle };
+  }
+
+  return next;
 }
 
 function sanitizeSearchTerm(query: string): string {
