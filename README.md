@@ -36,11 +36,9 @@ npm install
 ### 2. Discord bot
 
 1. [Discord Developer Portal](https://discord.com/developers/applications) → your app
-2. Copy the bot **token**, **Application ID**, and your server ID
+2. Copy the bot **token** and **Application ID**
 3. Invite the bot with scopes **`bot`** and **`applications.commands`**
 4. Bot → Privileged Gateway Intents → turn on **MESSAGE CONTENT INTENT** (needed for `t!` prefix commands)
-
-Enable Developer Mode in Discord (User Settings → Advanced), then right-click your server icon → Copy Server ID.
 
 ### 3. Database
 
@@ -57,7 +55,6 @@ Copy `.env.example` to `.env` and fill it in:
 ```
 DISCORD_TOKEN=
 DISCORD_CLIENT_ID=
-DISCORD_GUILD_ID=
 
 SUPABASE_URL=
 SUPABASE_KEY=
@@ -71,7 +68,7 @@ No quotes, no spaces around `=`.
 
 | Variable | Required? | Used for |
 |---|---|---|
-| Discord vars | Yes | Bot login and slash commands |
+| `DISCORD_TOKEN`, `DISCORD_CLIENT_ID` | Yes | Bot login and slash commands |
 | Supabase vars | Yes | Saving favourites |
 | Spotify vars | Optional | Better `/info` + `/artist` when Spotify allows it |
 | YouTube API key | Optional | YouTube `/info` year + view counts |
@@ -93,7 +90,7 @@ npm run dev
 
 Leave `npm run dev` running. Closing that terminal takes the bot offline.
 
-`deploy-commands` registers slash commands on your test server. Run it again whenever you add a new command.
+`deploy-commands` registers slash commands globally, so they work in every server the bot is in. Discord can take up to an hour to show them everywhere. Run it again whenever you add a new command.
 
 ## Scripts
 

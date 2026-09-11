@@ -12,10 +12,14 @@ function requireEnv(name: string): string {
   return value;
 }
 
+function optionalEnv(name: string): string | null {
+  const value = process.env[name]?.trim();
+  return value ? value : null;
+}
+
 export const env = {
   discordToken: requireEnv('DISCORD_TOKEN'),
   discordClientId: requireEnv('DISCORD_CLIENT_ID'),
-  discordGuildId: requireEnv('DISCORD_GUILD_ID'),
 };
 
 export function requireSupabaseEnv(): { supabaseUrl: string; supabaseKey: string } {
@@ -23,11 +27,6 @@ export function requireSupabaseEnv(): { supabaseUrl: string; supabaseKey: string
     supabaseUrl: requireEnv('SUPABASE_URL'),
     supabaseKey: requireEnv('SUPABASE_KEY'),
   };
-}
-
-function optionalEnv(name: string): string | null {
-  const value = process.env[name]?.trim();
-  return value ? value : null;
 }
 
 export function getSpotifyCredentials(): { clientId: string; clientSecret: string } | null {
