@@ -283,6 +283,8 @@ function missingArgMessage(optionName: string): string {
     case 'song_url':
     case 'song':
       return UserMessages.missingSongQuery;
+    case 'album':
+      return UserMessages.missingAlbumQuery;
     case 'artistname':
       return UserMessages.missingArtist;
     case 'user':

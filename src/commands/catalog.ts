@@ -4,14 +4,14 @@ import type { Command } from '../types/command';
 import { buildArtistSearchMessage } from '../utils/artistSearchMessage';
 import { UserFacingError, UserMessages } from '../utils/errors';
 
-export const artist: Command = {
+export const catalog: Command = {
   data: new SlashCommandBuilder()
-    .setName('artist')
-    .setDescription('Look up an artist portrait, genre, and years')
+    .setName('catalog')
+    .setDescription("Browse an artist's albums and songs")
     .addStringOption((option) =>
       option
         .setName('artistname')
-        .setDescription('The artist to look up')
+        .setDescription('The artist whose catalogue to browse')
         .setRequired(true)
         .setMinLength(1)
         .setMaxLength(80),
@@ -27,7 +27,7 @@ export const artist: Command = {
     const results = await searchCatalogueArtistsOrThrow(artistName);
     await ctx.editReply(
       buildArtistSearchMessage({
-        action: 'info',
+        action: 'cat',
         userId: ctx.user.id,
         query: artistName,
         results,

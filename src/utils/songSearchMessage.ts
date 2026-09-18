@@ -1,7 +1,7 @@
 import type { SongSearchHit } from '../services/music/types';
 import type { CommandReplyPayload } from './commandContext';
 import type { SongSearchAction } from './customIds';
-import { songSearchEmbeds, songSearchPickRow } from './embeds';
+import { songSearchCancelRow, songSearchEmbeds, songSearchPickRow } from './embeds';
 
 export function buildSongSearchMessage(options: {
   action: SongSearchAction;
@@ -12,6 +12,9 @@ export function buildSongSearchMessage(options: {
   return {
     content: `Pick a result **1–${options.results.length}**:`,
     embeds: songSearchEmbeds(options.query, options.results),
-    components: [songSearchPickRow(options.action, options.userId, options.results)],
+    components: [
+      songSearchPickRow(options.action, options.userId, options.results),
+      songSearchCancelRow(options.action, options.userId),
+    ],
   };
 }

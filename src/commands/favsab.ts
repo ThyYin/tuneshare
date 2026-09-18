@@ -1,21 +1,21 @@
 import { SlashCommandBuilder } from 'discord.js';
 import type { Command } from '../types/command';
 import { getDisplayName } from '../utils/displayName';
-import { buildFavouritesMessage } from '../utils/favouritesMessage';
+import { buildAlbumFavouritesMessage } from '../utils/albumFavouritesMessage';
 
-export const favs: Command = {
+export const favsab: Command = {
   data: new SlashCommandBuilder()
-    .setName('favs')
-    .setDescription('Show your favourite songs, or someone else\'s')
+    .setName('favsab')
+    .setDescription('Show your favourite albums, or someone else\'s')
     .addUserOption((option) =>
-      option.setName('user').setDescription('Whose songs to show. Defaults to you.'),
+      option.setName('user').setDescription('Whose albums to show. Defaults to you.'),
     ),
 
   async execute(ctx) {
     const user = (await ctx.getUser('user')) ?? ctx.user;
     const member = user.id === ctx.user.id ? ctx.member : await ctx.getMember('user');
 
-    const message = await buildFavouritesMessage({
+    const message = await buildAlbumFavouritesMessage({
       targetUserId: user.id,
       displayName: getDisplayName(user, member),
       isOwnList: user.id === ctx.user.id,

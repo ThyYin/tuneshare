@@ -1,29 +1,42 @@
 # Tunetopia
 
-A Discord bot for saving and sharing favourite songs. Users paste a Spotify or YouTube Music link, and Tunetopia keeps a personal list they can browse, filter, and look up.
+A Discord bot for saving and sharing favourite **songs and albums**. Users type a name or paste a Spotify / YouTube Music **track** link, and Tunetopia keeps personal lists they can browse, filter, and look up.
+
+It does not join voice channels or play audio.
 
 ## Commands
 
 Slash commands (`/fav`) and prefix commands (`t!fav`) both work.
 
+`/view` and `t!view` were removed. Use `/favs @user` or `t!favs @user` instead.
+
 | Command | Prefix | What it does |
 |---|---|---|
+| `/fav <song>` | `t!fav <name or link>` | Saves a song by name or Spotify / YouTube Music track link. Name search shows the top 5 + a red **Cancel** |
+| `/favs [user]` | `t!favs [@user]` | Favourite songs, with pages and an artist filter. Leave blank for yourself, or tag someone to peek |
+| `/unfav [song]` | `t!unfav [title]` | Removes a song. Blank = browse your list (artist filter + red **Cancel**). Typed title = search your favs the same way. Slash also has autocomplete |
+| `/favab <album>` | `t!favab <album>` | Saves an album by name. Top 5 picks + a red **Cancel** |
+| `/favsab [user]` | `t!favsab [@user]` | Favourite albums, with pages and an artist filter. Same optional `@user` as `/favs` |
+| `/unfavab [album]` | `t!unfavab [title]` | Removes an album. Same browse / search / artist filter / red **Cancel** pattern as `/unfav` |
+| `/info <song>` | `t!info <name or link>` | Cover, title, artist, album, year, and listener-style stats |
+| `/album <album>` | `t!album <album>` | Top 5 album search + red **Cancel**, then that album's tracklist |
+| `/topartists [user]` | `t!topartists [@user]` | Artists ranked by how many of their songs are in that user's song favs |
+| `/artist <artistname>` | `t!artist <name>` | Top 5 artist picker + red **Cancel**, then portrait, genre, years, and a page link |
+| `/catalog <artistname>` | `t!catalog <name>` | Same artist picker, then albums → songs. **Back** on a tracklist is blue and returns to albums |
 | `/help` | `t!help` | Lists every command and how to use it |
 | `/ping` | `t!ping` | Checks that the bot is online |
-| `/fav <song_url>` | `t!fav <link>` | Saves a Spotify or YouTube Music track |
-| `/favs` | `t!favs` | Shows your favourite songs, with pages and an artist filter |
-| `/view @user` | `t!view @user` | Shows someone else's favourites, with pages and an artist filter |
-| `/unfav` | `t!unfav <title>` | Removes a song. Slash: pick from the list. Prefix: type a title or artist |
-| `/info <song_url>` | `t!info <link>` | Cover, title, artist, album, year, and listener-style stats |
-| `/topartists [user]` | `t!topartists [@user]` | Artists ranked by how many of their songs are in that user's favs |
-| `/artist <artistname>` | `t!artist <name>` | Portrait, genre, born/formed year, passed/disbanded year, and a page link |
+
+| Songs | Albums |
+|---|---|
+| `/fav`, `/unfav`, `/favs [user]` | `/favab`, `/unfavab`, `/favsab [user]` |
+| `/info` | `/album` |
 
 ## What you need
 
 - Node.js 20+
 - A Discord bot (Developer Portal)
 - A free [Supabase](https://supabase.com) project
-- Optional: Spotify + YouTube keys for richer `/info` and `/artist` data
+- Optional: Spotify + YouTube keys for richer lookups. Album search, `/album`, `/favab`, and `/catalog` try Spotify first, then fall back to Deezer (no Deezer key)
 
 ## Setup
 
@@ -44,7 +57,8 @@ npm install
 
 1. Create a Supabase project
 2. SQL Editor → paste and run `supabase/schema.sql`
-3. Project Settings → API:
+3. If this project already had the old `favourites` table, still run the **`favourite_albums`** block in that file so album favs can save
+4. Project Settings → API:
    - Project URL → `SUPABASE_URL`
    - **service_role** secret → `SUPABASE_KEY` (not the anon key)
 
@@ -69,17 +83,17 @@ No quotes, no spaces around `=`.
 | Variable | Required? | Used for |
 |---|---|---|
 | `DISCORD_TOKEN`, `DISCORD_CLIENT_ID` | Yes | Bot login and slash commands |
-| Supabase vars | Yes | Saving favourites |
-| Spotify vars | Optional | Better `/info` + `/artist` when Spotify allows it |
+| Supabase vars | Yes | Saving song and album favourites |
+| Spotify vars | Optional | Better `/info` + `/artist`, plus album search / catalogue / `/favab` (Deezer is the fallback) |
 | YouTube API key | Optional | YouTube `/info` year + view counts |
 
 ### 5. Optional APIs
 
 **YouTube Data API v3** is free (quota, not a credit card). Restrict the key to **YouTube Data API v3**.
 
-**Spotify Web API** is also free, but new apps in Development Mode often return **403** unless the app owner has Premium and the app is set up in the [Spotify Dashboard](https://developer.spotify.com/dashboard). Tunetopia still fills Spotify `/info` using public catalogs (iTunes / Deezer) when Spotify blocks the request.
+**Spotify Web API** is also free, but new apps in Development Mode often return **403** unless the app owner has Premium and the app is set up in the [Spotify Dashboard](https://developer.spotify.com/dashboard). Tunetopia still fills Spotify `/info` using public catalogs (iTunes / Deezer) when Spotify blocks the request. Album search and artist catalogues also fall back to Deezer.
 
-`/artist` uses Spotify when it can, then MusicBrainz, Wikipedia, and TheAudioDB. No extra keys needed for those.
+`/artist` bios use Spotify when they can, then MusicBrainz, Wikipedia, and TheAudioDB. No extra keys needed for those.
 
 ### 6. Run the bot
 
@@ -90,7 +104,7 @@ npm run dev
 
 Leave `npm run dev` running. Closing that terminal takes the bot offline.
 
-`deploy-commands` registers slash commands globally, so they work in every server the bot is in. Discord can take up to an hour to show them everywhere. Run it again whenever you add a new command.
+`deploy-commands` registers slash commands globally, so they work in every server the bot is in. Discord can take up to an hour to show them everywhere. Run it again whenever you add, remove, or rename a command (for example after dropping `/view`).
 
 ## Scripts
 
@@ -105,22 +119,26 @@ Leave `npm run dev` running. Closing that terminal takes the bot offline.
 
 ```
 src/
-  commands/     slash commands
-  events/       Discord events
-  services/     music, artists, database logic
+  commands/     slash + prefix commands
+  events/       Discord events (buttons, menus, messages)
+  services/     music, artists, song/album favourites
   database/     Supabase client
-  utils/        embeds, pagination, helpers
+  utils/        embeds, pickers, pagination, helpers
   config/       environment variables
 supabase/
-  schema.sql    database table
+  schema.sql    favourites + favourite_albums tables
 ```
 
 Discord commands stay thin. They call services for music metadata and database work so those pieces can change later without a rewrite.
 
+User-facing command copy also lives in `test.md`.
+
 ## Notes
 
-- Duplicates are blocked in the database: same user + platform + song id
-- `/view` and `/favs` show the song URL under each title
-- The artist dropdown on those lists is capped at 24 artists (Discord select limit), ranked by how many songs you have from them
+- Duplicates are blocked in the database: same user + platform + song id, and same user + platform + album id
+- `/favs` and `/favsab` show the source URL under each title
+- Artist dropdowns are capped at 24 artists (Discord select limit), ranked by how many songs or albums you have from them
+- Search pickers (songs, albums, artists) show up to 5 results and a red **Cancel**. Only the person who ran the command can use those buttons
+- `/catalog` tracklists have a blue **Back** button to the album list. `/album` tracklists do not (you came from album search, not an artist)
 - Spotify does not publish real play counts on their official API. `/info` shows YouTube views, and for Spotify it uses catalog stats when available
 - Do not commit `.env`

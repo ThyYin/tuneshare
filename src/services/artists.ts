@@ -1,6 +1,7 @@
 import { getSpotifyCredentials } from '../config/env';
 import { yearFromDate } from '../utils/format';
 import { logger } from '../utils/logger';
+import type { CatalogueSource } from './music/artistCatalogue';
 import { asRecord, fetchJson, readArray, readNumber, readRecord, readString } from './music/http';
 import { getSpotifyAppToken } from './music/spotifyAuth';
 
@@ -13,9 +14,13 @@ export interface ArtistProfile {
   portraitUrl: string | null;
   pageUrl: string;
   sourceLabel: string;
+  spotifyArtistId: string | null;
 }
 
-export async function lookupArtist(query: string): Promise<ArtistProfile | null> {
+export async function lookupArtist(
+  query: string,
+  options?: { spotifyArtistId?: string | null },
+): Promise<ArtistProfile | null> {
   const name = query.replace(/\s+/g, ' ').trim();
 
   if (!name) {
@@ -26,7 +31,9 @@ export async function lookupArtist(query: string): Promise<ArtistProfile | null>
   const [wikipedia, audioDb, spotify] = await Promise.all([
     lookupWikipedia(musicBrainz?.wikipediaTitle ?? name),
     lookupAudioDb(name),
-    lookupSpotifyArtist(name),
+    options?.spotifyArtistId
+      ? fetchSpotifyArtistById(options.spotifyArtistId)
+      : lookupSpotifyArtist(name),
   ]);
 
   const mergedName = spotify?.name ?? musicBrainz?.name ?? audioDb?.name ?? wikipedia?.name;
@@ -51,7 +58,38 @@ export async function lookupArtist(query: string): Promise<ArtistProfile | null>
     portraitUrl: firstValue(spotify?.portraitUrl, wikipedia?.portraitUrl, audioDb?.portraitUrl),
     pageUrl,
     sourceLabel: spotify ? 'Spotify' : musicBrainz ? 'MusicBrainz' : 'Public music databases',
+    spotifyArtistId: spotify?.spotifyArtistId ?? null,
   };
+}
+
+export async function lookupArtistFromPick(
+  source: CatalogueSource,
+  artistId: string,
+): Promise<ArtistProfile | null> {
+  if (source === 'spotify') {
+    const spotify = await fetchSpotifyArtistById(artistId);
+    if (!spotify?.name) {
+      return null;
+    }
+
+    return lookupArtist(spotify.name, { spotifyArtistId: artistId });
+  }
+
+  try {
+    const artist = await fetchJson(`https://api.deezer.com/artist/${artistId}`);
+    const name = readString(artist, 'name');
+    if (!name) {
+      return null;
+    }
+
+    return lookupArtist(name);
+  } catch (error) {
+    logger.warn('Deezer artist pick lookup failed', {
+      artistId,
+      error: error instanceof Error ? error.message : 'unknown',
+    });
+    return null;
+  }
 }
 
 function firstValue(...values: Array<string | null | undefined>): string | null {
@@ -60,7 +98,7 @@ function firstValue(...values: Array<string | null | undefined>): string | null 
 
 async function lookupSpotifyArtist(
   name: string,
-): Promise<Pick<ArtistProfile, 'name' | 'genre' | 'portraitUrl' | 'pageUrl'> | null> {
+): Promise<Pick<ArtistProfile, 'name' | 'genre' | 'portraitUrl' | 'pageUrl' | 'spotifyArtistId'> | null> {
   if (!getSpotifyCredentials()) {
     return null;
   }
@@ -74,32 +112,73 @@ async function lookupSpotifyArtist(
     const artists = readRecord(search, 'artists');
     const items = artists ? (readArray(artists, 'items') ?? []) : [];
     const artist = asRecord(items[0]);
+    const artistId = artist ? readString(artist, 'id') : null;
 
-    if (!artist) {
-      return null;
+    if (!artistId) {
+      return mapSpotifyArtist(artist, name);
     }
 
-    const artistId = readString(artist, 'id');
-    const images = readArray(artist, 'images') ?? [];
-    const cover = asRecord(images[0]);
-    const genres = readArray(artist, 'genres') ?? [];
-    const genre = typeof genres[0] === 'string' ? genres[0] : null;
-    const urls = readRecord(artist, 'external_urls');
-
-    return {
-      name: readString(artist, 'name') ?? name,
-      genre,
-      portraitUrl: cover ? readString(cover, 'url') : null,
-      pageUrl:
-        (urls ? readString(urls, 'spotify') : null) ??
-        (artistId ? `https://open.spotify.com/artist/${artistId}` : `https://open.spotify.com/search/${encodeURIComponent(name)}`),
-    };
+    return (await fetchSpotifyArtistById(artistId)) ?? mapSpotifyArtist(artist, name);
   } catch (error) {
     logger.warn('Spotify artist search failed', {
       error: error instanceof Error ? error.message : 'unknown',
     });
     return null;
   }
+}
+
+async function fetchSpotifyArtistById(
+  artistId: string,
+): Promise<Pick<ArtistProfile, 'name' | 'genre' | 'portraitUrl' | 'pageUrl' | 'spotifyArtistId'> | null> {
+  if (!getSpotifyCredentials() || !/^[A-Za-z0-9]{22}$/.test(artistId)) {
+    return null;
+  }
+
+  try {
+    const token = await getSpotifyAppToken();
+    const artist = await fetchJson(`https://api.spotify.com/v1/artists/${artistId}`, {
+      headers: { Authorization: `Bearer ${token}` },
+    });
+    return mapSpotifyArtist(artist, null, artistId);
+  } catch (error) {
+    logger.warn('Spotify artist id lookup failed', {
+      artistId,
+      error: error instanceof Error ? error.message : 'unknown',
+    });
+    return null;
+  }
+}
+
+function mapSpotifyArtist(
+  artist: Record<string, unknown> | null,
+  fallbackName: string | null,
+  knownId?: string,
+): Pick<ArtistProfile, 'name' | 'genre' | 'portraitUrl' | 'pageUrl' | 'spotifyArtistId'> | null {
+  if (!artist) {
+    return null;
+  }
+
+  const artistId = knownId ?? readString(artist, 'id');
+  const images = readArray(artist, 'images') ?? [];
+  const cover = asRecord(images[0]);
+  const genres = readArray(artist, 'genres') ?? [];
+  const genre = typeof genres[0] === 'string' ? genres[0] : null;
+  const urls = readRecord(artist, 'external_urls');
+  const name = readString(artist, 'name') ?? fallbackName;
+
+  if (!name) {
+    return null;
+  }
+
+  return {
+    name,
+    genre,
+    portraitUrl: cover ? readString(cover, 'url') : null,
+    pageUrl:
+      (urls ? readString(urls, 'spotify') : null) ??
+      (artistId ? `https://open.spotify.com/artist/${artistId}` : `https://open.spotify.com/search/${encodeURIComponent(name)}`),
+    spotifyArtistId: artistId && /^[A-Za-z0-9]{22}$/.test(artistId) ? artistId : null,
+  };
 }
 
 async function lookupMusicBrainz(name: string): Promise<{

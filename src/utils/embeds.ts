@@ -9,11 +9,43 @@ import {
 } from 'discord.js';
 import { MAX_ARTIST_SELECT_OPTIONS } from '../constants';
 import type { ArtistProfile } from '../services/artists';
+import type { AlbumTracksPage, AlbumSearchHit, ArtistSearchHit, PaginatedAlbums } from '../services/music/artistCatalogue';
 import type { Command } from '../types/command';
 import type { SongInfo, SongSearchHit } from '../services/music/types';
-import type { ArtistCount, Favourite, PaginatedArtists, PaginatedFavourites, Platform } from '../types/favourite';
+import type {
+  AlbumPlatform,
+  ArtistCount,
+  Favourite,
+  FavouriteAlbum,
+  PaginatedArtists,
+  PaginatedFavouriteAlbums,
+  PaginatedFavourites,
+  Platform,
+} from '../types/favourite';
 import { stripArtistFromTitle } from '../services/music/trackCredits';
-import { ALL_ARTISTS_FILTER, artistFilterKey, searchPickButtonId, unfavSongButtonId, type SongSearchAction } from './customIds';
+import {
+  ALL_ARTISTS_FILTER,
+  albumLookupTracksButtonId,
+  albumSearchCancelButtonId,
+  albumSearchPickButtonId,
+  artistFilterKey,
+  artistSearchCancelButtonId,
+  artistSearchPickButtonId,
+  catalogueAlbumPickButtonId,
+  catalogueAlbumsButtonId,
+  catalogueTracksButtonId,
+  searchCancelButtonId,
+  searchPickButtonId,
+  unfavAlbumButtonId,
+  unfavAlbumCancelButtonId,
+  unfavAlbumSearchPageButtonId,
+  unfavCancelButtonId,
+  unfavSearchPageButtonId,
+  unfavSongButtonId,
+  type AlbumSearchAction,
+  type ArtistSearchAction,
+  type SongSearchAction,
+} from './customIds';
 
 const SPOTIFY_COLOR = 0x1db954;
 const YOUTUBE_COLOR = 0x1db954;
@@ -22,23 +54,31 @@ const DEFAULT_COLOR = 0x5865f2;
 const HELP_COMMAND_ORDER = [
   'fav',
   'favs',
-  'view',
   'unfav',
+  'favab',
+  'favsab',
+  'unfavab',
   'info',
+  'album',
   'topartists',
   'artist',
+  'catalog',
   'help',
   'ping',
 ];
 
 const HELP_USAGE_NOTES: Record<string, string> = {
   fav: 'Favourite a song by typing its name, or paste a Spotify / YT Music song link.',
-  favs: 'Display your list of favourited songs.',
-  view: 'Display a server member\'s list of favourited songs.',
-  unfav: 'Unfavourite a song.\nSlash: start typing to pick it.\nPrefix: `t!unfav` shows your list so you can pick one.',
+  favs: 'Display your favourited songs, or tag someone to peek at theirs.',
+  unfav: 'Unfavourite a song.\nSlash: start typing to pick it.\nPrefix: `t!unfav` shows your list (artist filter + red Cancel below it).\nSearch your favs with `t!unfav Billie Jean` — same artist filter.',
+  favab: 'Favourite an album by typing its name. Pick from the top 5, or Cancel.',
+  favsab: 'Display your favourited albums, or tag someone to peek at theirs.',
+  unfavab: 'Unfavourite an album.\n`t!unfavab` shows your list (artist filter + red Cancel).\nSearch with `t!unfavab Thriller`.',
   info: 'Look up a song by name or paste a Spotify / YT Music link.',
+  album: 'Look up an album by name. Pick from the top 5, then see its tracks.',
   topartists: 'Display the top artists from your favourited songs by leaving the user blank for your own ranking, or view someone else\'s by mentioning their user.',
-  artist: 'Display an artist\'s info by typing their name.',
+  artist: 'Display an artist\'s info. Type a name, pick from the top 5, or Cancel.',
+  catalog: 'Browse an artist\'s albums. Type a name, pick from the top 5, then pick an album. Cancel is there too.',
   ping: 'Annie are you okay?',
   help: 'Shows this list.',
 };
@@ -50,6 +90,19 @@ export function platformLabel(platform: Platform): string {
     case 'youtube_music':
       return 'YouTube Music';
   }
+}
+
+export function albumPlatformLabel(platform: AlbumPlatform): string {
+  switch (platform) {
+    case 'spotify':
+      return 'Spotify';
+    case 'deezer':
+      return 'Deezer';
+  }
+}
+
+export function formatAlbum(album: Pick<FavouriteAlbum, 'artist' | 'albumTitle'>): string {
+  return `${truncate(album.artist, 80)} — ${truncate(album.albumTitle, 80)}`;
 }
 
 export function addedFavouriteEmbed(favourite: Favourite, metadataMissing: boolean): EmbedBuilder {
@@ -97,6 +150,28 @@ export function removedFavouriteEmbed(favourite: Favourite): EmbedBuilder {
   return embed;
 }
 
+export function addedFavouriteAlbumEmbed(album: FavouriteAlbum): EmbedBuilder {
+  const embed = new EmbedBuilder()
+    .setColor(album.platform === 'spotify' ? SPOTIFY_COLOR : DEFAULT_COLOR)
+    .setTitle('✅ Album added to your favourites')
+    .setDescription(`💿 **${formatAlbum(album)}**\n${albumPlatformLabel(album.platform)}`)
+    .setURL(album.url);
+
+  applyThumbnail(embed, album.thumbnailUrl);
+  return embed;
+}
+
+export function removedFavouriteAlbumEmbed(album: FavouriteAlbum): EmbedBuilder {
+  const embed = new EmbedBuilder()
+    .setColor(DEFAULT_COLOR)
+    .setTitle('🗑️ Album removed from your favourites')
+    .setDescription(`💿 **${formatAlbum(album)}**\n${albumPlatformLabel(album.platform)}`)
+    .setURL(album.url);
+
+  applyThumbnail(embed, album.thumbnailUrl);
+  return embed;
+}
+
 export function favouritesListEmbeds(
   displayName: string,
   pageData: PaginatedFavourites,
@@ -121,9 +196,14 @@ export function favouritesListEmbeds(
   }
 
   const start = (pageData.page - 1) * pageData.pageSize;
-  const footer = pageData.artistFilter
-    ? `Page ${pageData.page}/${pageData.totalPages} · ${pageData.artistFilter}`
-    : `Page ${pageData.page}/${pageData.totalPages}`;
+  const footerParts = [`Page ${pageData.page}/${pageData.totalPages}`];
+  if (pageData.artistFilter) {
+    footerParts.push(pageData.artistFilter);
+  }
+  if (pageData.searchQuery) {
+    footerParts.push(`Search: ${truncate(pageData.searchQuery, 40)}`);
+  }
+  const footer = footerParts.join(' · ');
 
   return pageData.items.map((song, index) => {
     const number = start + index + 1;
@@ -139,6 +219,70 @@ export function favouritesListEmbeds(
     }
 
     applyThumbnail(embed, song.thumbnailUrl);
+
+    if (index === pageData.items.length - 1) {
+      embed.setFooter({ text: footer });
+    }
+
+    return embed;
+  });
+}
+
+export function favouriteAlbumsListEmbeds(
+  displayName: string,
+  pageData: PaginatedFavouriteAlbums,
+  isOwnList: boolean,
+  options?: { title?: string },
+): EmbedBuilder[] {
+  const title = options?.title ?? `💿 ${displayName}'s Favourite Albums`;
+
+  if (pageData.total === 0) {
+    return [
+      new EmbedBuilder()
+        .setColor(DEFAULT_COLOR)
+        .setTitle(title)
+        .setDescription(
+          pageData.artistFilter
+            ? `${displayName} has no favourite albums by ${pageData.artistFilter}.`
+            : isOwnList
+              ? "You don't have any favourite albums yet.\nAdd one with `/favab`."
+              : `${displayName} doesn't have any favourite albums yet.`,
+        ),
+    ];
+  }
+
+  const start = (pageData.page - 1) * pageData.pageSize;
+  const footerParts = [`Page ${pageData.page}/${pageData.totalPages}`];
+  if (pageData.artistFilter) {
+    footerParts.push(pageData.artistFilter);
+  }
+  if (pageData.searchQuery) {
+    footerParts.push(`Search: ${truncate(pageData.searchQuery, 40)}`);
+  }
+  const footer = footerParts.join(' · ');
+
+  return pageData.items.map((album, index) => {
+    const number = start + index + 1;
+    const details = [
+      albumPlatformLabel(album.platform),
+      album.year,
+      album.totalTracks !== null
+        ? `${album.totalTracks} ${album.totalTracks === 1 ? 'song' : 'songs'}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+
+    const embed = new EmbedBuilder()
+      .setColor(album.platform === 'spotify' ? SPOTIFY_COLOR : DEFAULT_COLOR)
+      .setDescription(`${number}. **${formatAlbum(album)}**\n${details}\n${album.url}`)
+      .setURL(album.url);
+
+    if (index === 0) {
+      embed.setTitle(title);
+    }
+
+    applyThumbnail(embed, album.thumbnailUrl);
 
     if (index === pageData.items.length - 1) {
       embed.setFooter({ text: footer });
@@ -172,6 +316,88 @@ export function songSearchEmbeds(query: string, results: SongSearchHit[]): Embed
   });
 }
 
+export function artistSearchEmbeds(query: string, results: ArtistSearchHit[]): EmbedBuilder[] {
+  return results.map((artist, index) => {
+    const embed = new EmbedBuilder()
+      .setColor(DEFAULT_COLOR)
+      .setDescription(
+        [`${index + 1}. **${truncate(artist.name, 80)}**`, artist.genre ? truncate(artist.genre, 80) : 'Artist']
+          .join('\n'),
+      )
+      .setURL(artist.pageUrl);
+
+    if (index === 0) {
+      embed.setTitle(`🔍 Artists matching "${truncate(query, 80)}"`);
+    }
+
+    applyThumbnail(embed, artist.portraitUrl);
+    return embed;
+  });
+}
+
+export function artistSearchPickRow(
+  action: ArtistSearchAction,
+  userId: string,
+  results: ArtistSearchHit[],
+): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    ...results.map((artist, index) =>
+      new ButtonBuilder()
+        .setCustomId(artistSearchPickButtonId(action, userId, artist.source, artist.artistId))
+        .setLabel(String(index + 1))
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  );
+}
+
+export function artistSearchCancelRow(
+  action: ArtistSearchAction,
+  userId: string,
+): ActionRowBuilder<ButtonBuilder> {
+  return cancelPickRow(artistSearchCancelButtonId(action, userId));
+}
+
+export function albumSearchEmbeds(query: string, results: AlbumSearchHit[]): EmbedBuilder[] {
+  return results.map((album, index) => {
+    const details = [album.artist, album.albumType, album.year].filter(Boolean).join(' · ');
+    const embed = new EmbedBuilder()
+      .setColor(album.source === 'spotify' ? SPOTIFY_COLOR : DEFAULT_COLOR)
+      .setDescription(`${index + 1}. **${truncate(album.name, 80)}**\n${details || 'Album'}`)
+      .setURL(album.pageUrl);
+
+    if (index === 0) {
+      embed.setTitle(`🔍 Albums matching "${truncate(query, 80)}"`);
+    }
+
+    applyThumbnail(embed, album.thumbnailUrl);
+    return embed;
+  });
+}
+
+export function albumSearchPickRow(
+  action: AlbumSearchAction,
+  userId: string,
+  results: AlbumSearchHit[],
+): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    ...results.map((album, index) =>
+      new ButtonBuilder()
+        .setCustomId(
+          albumSearchPickButtonId(action, userId, album.source, album.artistId, album.albumId),
+        )
+        .setLabel(String(index + 1))
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  );
+}
+
+export function albumSearchCancelRow(
+  action: AlbumSearchAction,
+  userId: string,
+): ActionRowBuilder<ButtonBuilder> {
+  return cancelPickRow(albumSearchCancelButtonId(action, userId));
+}
+
 export function songSearchPickRow(
   action: SongSearchAction,
   userId: string,
@@ -184,6 +410,80 @@ export function songSearchPickRow(
         .setLabel(String(index + 1))
         .setStyle(ButtonStyle.Secondary),
     ),
+  );
+}
+
+export function cancelPickRow(customId: string): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(customId)
+      .setLabel('Cancel')
+      .setStyle(ButtonStyle.Danger),
+  );
+}
+
+export function songSearchCancelRow(
+  action: SongSearchAction,
+  userId: string,
+): ActionRowBuilder<ButtonBuilder> {
+  return cancelPickRow(searchCancelButtonId(action, userId));
+}
+
+export function unfavCancelRow(userId: string): ActionRowBuilder<ButtonBuilder> {
+  return cancelPickRow(unfavCancelButtonId(userId));
+}
+
+export function unfavAlbumCancelRow(userId: string): ActionRowBuilder<ButtonBuilder> {
+  return cancelPickRow(unfavAlbumCancelButtonId(userId));
+}
+
+export function unfavAlbumPickRow(
+  userId: string,
+  albums: FavouriteAlbum[],
+  startIndex: number,
+): ActionRowBuilder<ButtonBuilder> {
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    ...albums.map((album, index) =>
+      new ButtonBuilder()
+        .setCustomId(unfavAlbumButtonId(userId, album.id))
+        .setLabel(String(startIndex + index + 1))
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  );
+}
+
+export function unfavAlbumPaginationRow(
+  userId: string,
+  pageData: PaginatedFavouriteAlbums,
+  options?: { artistKey?: string; searchToken?: string },
+): ActionRowBuilder<ButtonBuilder> | null {
+  if (pageData.totalPages <= 1) {
+    return null;
+  }
+
+  const artistKey = options?.artistKey || ALL_ARTISTS_FILTER;
+  const searchToken = options?.searchToken;
+  const pageId = (page: number) =>
+    searchToken
+      ? unfavAlbumSearchPageButtonId(userId, page, searchToken, artistKey)
+      : `unfavab-page:${userId}:${page}:${artistKey}`;
+
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(pageId(pageData.page - 1))
+      .setLabel('◀ Previous')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(pageData.page <= 1),
+    new ButtonBuilder()
+      .setCustomId(searchToken ? `unfavab-q:noop:${userId}` : `unfavab-page:noop:${userId}`)
+      .setLabel(`${pageData.page} / ${pageData.totalPages}`)
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(true),
+    new ButtonBuilder()
+      .setCustomId(pageId(pageData.page + 1))
+      .setLabel('Next ▶')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(pageData.page >= pageData.totalPages),
   );
 }
 
@@ -205,24 +505,32 @@ export function unfavPickRow(
 export function unfavPaginationRow(
   userId: string,
   pageData: PaginatedFavourites,
+  options?: { artistKey?: string; searchToken?: string },
 ): ActionRowBuilder<ButtonBuilder> | null {
   if (pageData.totalPages <= 1) {
     return null;
   }
 
+  const artistKey = options?.artistKey || ALL_ARTISTS_FILTER;
+  const searchToken = options?.searchToken;
+  const pageId = (page: number) =>
+    searchToken
+      ? unfavSearchPageButtonId(userId, page, searchToken, artistKey)
+      : `unfav-page:${userId}:${page}:${artistKey}`;
+
   return new ActionRowBuilder<ButtonBuilder>().addComponents(
     new ButtonBuilder()
-      .setCustomId(`unfav-page:${userId}:${pageData.page - 1}`)
+      .setCustomId(pageId(pageData.page - 1))
       .setLabel('◀ Previous')
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(pageData.page <= 1),
     new ButtonBuilder()
-      .setCustomId(`unfav-page:noop:${userId}`)
+      .setCustomId(searchToken ? `unfav-q:noop:${userId}` : `unfav-page:noop:${userId}`)
       .setLabel(`${pageData.page} / ${pageData.totalPages}`)
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(true),
     new ButtonBuilder()
-      .setCustomId(`unfav-page:${userId}:${pageData.page + 1}`)
+      .setCustomId(pageId(pageData.page + 1))
       .setLabel('Next ▶')
       .setStyle(ButtonStyle.Secondary)
       .setDisabled(pageData.page >= pageData.totalPages),
@@ -259,29 +567,63 @@ export function favouritesPaginationRow(
   );
 }
 
+export function albumFavouritesPaginationRow(
+  targetUserId: string,
+  pageData: PaginatedFavouriteAlbums,
+  artistKey: string,
+): ActionRowBuilder<ButtonBuilder> | null {
+  if (pageData.totalPages <= 1) {
+    return null;
+  }
+
+  const filter = artistKey || ALL_ARTISTS_FILTER;
+
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(`favsab:${targetUserId}:${pageData.page - 1}:${filter}`)
+      .setLabel('◀ Previous')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(pageData.page <= 1),
+    new ButtonBuilder()
+      .setCustomId(`favsab:noop:${targetUserId}`)
+      .setLabel(`${pageData.page} / ${pageData.totalPages}`)
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(true),
+    new ButtonBuilder()
+      .setCustomId(`favsab:${targetUserId}:${pageData.page + 1}:${filter}`)
+      .setLabel('Next ▶')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(pageData.page >= pageData.totalPages),
+  );
+}
+
 export function artistFilterSelectRow(
   targetUserId: string,
   artists: ArtistCount[],
   selectedKey: string,
+  options?: { customId?: string; allDescription?: string; countNoun?: string },
 ): ActionRowBuilder<StringSelectMenuBuilder> | null {
   if (artists.length === 0) {
     return null;
   }
 
-  const options = [
+  const countNoun = options?.countNoun ?? 'song';
+
+  const selectOptions = [
     new StringSelectMenuOptionBuilder()
       .setLabel('All artists')
-      .setDescription('Show every favourite song')
+      .setDescription(options?.allDescription ?? 'Show every favourite song')
       .setValue(ALL_ARTISTS_FILTER)
       .setDefault(selectedKey === ALL_ARTISTS_FILTER),
   ];
 
   for (const item of artists.slice(0, MAX_ARTIST_SELECT_OPTIONS)) {
     const value = artistFilterKey(item.artist);
-    options.push(
+    const noun = item.count === 1 ? countNoun : `${countNoun}s`;
+    selectOptions.push(
       new StringSelectMenuOptionBuilder()
         .setLabel(truncate(item.artist, 100))
-        .setDescription(`${item.count} ${item.count === 1 ? 'song' : 'songs'}`)
+        .setDescription(`${item.count} ${noun}`)
         .setValue(value)
         .setDefault(selectedKey === value),
     );
@@ -289,9 +631,9 @@ export function artistFilterSelectRow(
 
   return new ActionRowBuilder<StringSelectMenuBuilder>().addComponents(
     new StringSelectMenuBuilder()
-      .setCustomId(`favs-filter:${targetUserId}`)
+      .setCustomId(options?.customId ?? `favs-filter:${targetUserId}`)
       .setPlaceholder('Filter by artist')
-      .addOptions(options),
+      .addOptions(selectOptions),
   );
 }
 
@@ -365,6 +707,232 @@ export function artistProfileEmbed(profile: ArtistProfile): EmbedBuilder {
   }
 
   return embed;
+}
+
+export function artistAlbumsEmbeds(
+  pageData: PaginatedAlbums,
+  profile?: ArtistProfile | null,
+): EmbedBuilder[] {
+  const embeds: EmbedBuilder[] = [];
+
+  if (profile) {
+    embeds.push(artistProfileEmbed(profile));
+  }
+
+  if (pageData.total === 0) {
+    if (!profile) {
+      embeds.push(
+        new EmbedBuilder()
+          .setColor(DEFAULT_COLOR)
+          .setTitle(truncate(`${pageData.artist.name}'s Catalogue`, 240))
+          .setDescription("I couldn't find any albums for this artist.")
+          .setURL(pageData.artist.pageUrl),
+      );
+    }
+    return embeds;
+  }
+
+  const start = (pageData.page - 1) * pageData.pageSize;
+  const footer = `Page ${pageData.page}/${pageData.totalPages} · ${pageData.total} ${pageData.total === 1 ? 'release' : 'releases'}`;
+
+  pageData.items.forEach((album, index) => {
+    const number = start + index + 1;
+    const details = [
+      album.albumType,
+      album.year,
+      album.totalTracks !== null
+        ? `${album.totalTracks} ${album.totalTracks === 1 ? 'song' : 'songs'}`
+        : null,
+    ]
+      .filter(Boolean)
+      .join(' · ');
+
+    const embed = new EmbedBuilder()
+      .setColor(DEFAULT_COLOR)
+      .setDescription(`${number}. **${truncate(album.name, 80)}**\n${details || 'Album'}`)
+      .setURL(album.pageUrl);
+
+    if (index === 0 && !profile) {
+      embed.setTitle(truncate(`${pageData.artist.name}'s Catalogue`, 240));
+    } else if (index === 0) {
+      embed.setTitle('💿 Albums');
+    }
+
+    applyThumbnail(embed, album.thumbnailUrl);
+
+    if (index === pageData.items.length - 1) {
+      embed.setFooter({ text: footer });
+    }
+
+    embeds.push(embed);
+  });
+
+  return embeds;
+}
+
+export function artistAlbumPickRow(
+  userId: string,
+  pageData: PaginatedAlbums,
+): ActionRowBuilder<ButtonBuilder> | null {
+  if (pageData.items.length === 0) {
+    return null;
+  }
+
+  const start = (pageData.page - 1) * pageData.pageSize;
+
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    ...pageData.items.map((album, index) =>
+      new ButtonBuilder()
+        .setCustomId(
+          catalogueAlbumPickButtonId(
+            userId,
+            pageData.artist.source,
+            pageData.artist.artistId,
+            album.albumId,
+            pageData.page,
+          ),
+        )
+        .setLabel(String(start + index + 1))
+        .setStyle(ButtonStyle.Secondary),
+    ),
+  );
+}
+
+export function artistAlbumsPaginationRow(
+  userId: string,
+  pageData: PaginatedAlbums,
+): ActionRowBuilder<ButtonBuilder> | null {
+  if (pageData.totalPages <= 1) {
+    return null;
+  }
+
+  const { source, artistId } = pageData.artist;
+
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(
+    new ButtonBuilder()
+      .setCustomId(catalogueAlbumsButtonId(userId, source, artistId, pageData.page - 1))
+      .setLabel('◀ Previous')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(pageData.page <= 1),
+    new ButtonBuilder()
+      .setCustomId(`cat-alb:noop:${userId}`)
+      .setLabel(`${pageData.page} / ${pageData.totalPages}`)
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(true),
+    new ButtonBuilder()
+      .setCustomId(catalogueAlbumsButtonId(userId, source, artistId, pageData.page + 1))
+      .setLabel('Next ▶')
+      .setStyle(ButtonStyle.Secondary)
+      .setDisabled(pageData.page >= pageData.totalPages),
+  );
+}
+
+export function artistTracksEmbed(pageData: AlbumTracksPage): EmbedBuilder {
+  const details = [
+    pageData.artist.name,
+    pageData.album.albumType,
+    pageData.album.year,
+    `${pageData.total} ${pageData.total === 1 ? 'song' : 'songs'}`,
+  ]
+    .filter(Boolean)
+    .join(' · ');
+
+  const lines =
+    pageData.items.length === 0
+      ? ['No tracks found on this album.']
+      : pageData.items.map((track) => {
+          const number = track.trackNumber ?? 0;
+          const title = track.url
+            ? `[${truncate(track.name, 80)}](${track.url})`
+            : `**${truncate(track.name, 80)}**`;
+          const duration = track.durationLabel ? ` · ${track.durationLabel}` : '';
+          return `${number}. ${title}${duration}`;
+        });
+
+  const embed = new EmbedBuilder()
+    .setColor(DEFAULT_COLOR)
+    .setTitle(truncate(pageData.album.name, 240))
+    .setURL(pageData.album.pageUrl)
+    .setDescription(`${details}\n\n${lines.join('\n')}`)
+    .setFooter({
+      text:
+        pageData.totalPages > 1
+          ? `Page ${pageData.page}/${pageData.totalPages}`
+          : `${pageData.total} ${pageData.total === 1 ? 'song' : 'songs'}`,
+    });
+
+  if (pageData.album.thumbnailUrl) {
+    embed.setThumbnail(pageData.album.thumbnailUrl);
+  }
+
+  return embed;
+}
+
+export function artistTracksNavRow(
+  userId: string,
+  pageData: AlbumTracksPage,
+  albumsPage: number,
+  options?: { showBack?: boolean },
+): ActionRowBuilder<ButtonBuilder> | null {
+  const { source, artistId } = pageData.artist;
+  const showBack = options?.showBack !== false;
+  const buttons: ButtonBuilder[] = [];
+
+  if (showBack) {
+    buttons.push(
+      new ButtonBuilder()
+        .setCustomId(catalogueAlbumsButtonId(userId, source, artistId, albumsPage))
+        .setLabel('Back')
+        .setStyle(ButtonStyle.Primary),
+    );
+  }
+
+  if (pageData.totalPages > 1) {
+    const prevId = showBack
+      ? catalogueTracksButtonId(
+          userId,
+          source,
+          artistId,
+          pageData.album.albumId,
+          pageData.page - 1,
+          albumsPage,
+        )
+      : albumLookupTracksButtonId(userId, source, artistId, pageData.album.albumId, pageData.page - 1);
+    const nextId = showBack
+      ? catalogueTracksButtonId(
+          userId,
+          source,
+          artistId,
+          pageData.album.albumId,
+          pageData.page + 1,
+          albumsPage,
+        )
+      : albumLookupTracksButtonId(userId, source, artistId, pageData.album.albumId, pageData.page + 1);
+
+    buttons.push(
+      new ButtonBuilder()
+        .setCustomId(prevId)
+        .setLabel('◀ Previous')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(pageData.page <= 1),
+      new ButtonBuilder()
+        .setCustomId(showBack ? `cat-trk:noop:${userId}` : `alb-trk:noop:${userId}`)
+        .setLabel(`${pageData.page} / ${pageData.totalPages}`)
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(true),
+      new ButtonBuilder()
+        .setCustomId(nextId)
+        .setLabel('Next ▶')
+        .setStyle(ButtonStyle.Secondary)
+        .setDisabled(pageData.page >= pageData.totalPages),
+    );
+  }
+
+  if (buttons.length === 0) {
+    return null;
+  }
+
+  return new ActionRowBuilder<ButtonBuilder>().addComponents(buttons);
 }
 
 export function helpEmbed(commandList: Command[]): EmbedBuilder {

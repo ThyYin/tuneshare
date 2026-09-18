@@ -58,12 +58,26 @@ export async function addFavourite(input: FavouriteInsert): Promise<Favourite> {
 export async function listFavourites(
   discordUserId: string,
   page: number,
-  options?: { pageSize?: number; artist?: string | null },
+  options?: { pageSize?: number; artist?: string | null; search?: string | null },
 ): Promise<PaginatedFavourites> {
   await ensureRepairedCredits(discordUserId);
   const pageSize = options?.pageSize ?? FAVOURITES_PAGE_SIZE;
   const artist = options?.artist?.trim() || null;
+  const search = options?.search?.trim() || null;
+  const searchTerm = search ? sanitizeSearchTerm(search) : '';
   const artistNames = artist ? await artistFilterNames(discordUserId, artist) : null;
+
+  if (search && !searchTerm) {
+    return {
+      items: [],
+      page: 1,
+      pageSize,
+      total: 0,
+      totalPages: 0,
+      artistFilter: artist,
+      searchQuery: search,
+    };
+  }
 
   let countQuery = supabase
     .from('favourites')
@@ -72,6 +86,10 @@ export async function listFavourites(
 
   if (artistNames && artistNames.length > 0) {
     countQuery = countQuery.in('artist', artistNames);
+  }
+
+  if (searchTerm) {
+    countQuery = countQuery.or(`song_title.ilike.%${searchTerm}%,artist.ilike.%${searchTerm}%`);
   }
 
   const { count, error: countError } = await countQuery;
@@ -93,6 +111,7 @@ export async function listFavourites(
       total: 0,
       totalPages: 0,
       artistFilter: artist,
+      searchQuery: search,
     };
   }
 
@@ -110,6 +129,10 @@ export async function listFavourites(
     dataQuery = dataQuery.in('artist', artistNames);
   }
 
+  if (searchTerm) {
+    dataQuery = dataQuery.or(`song_title.ilike.%${searchTerm}%,artist.ilike.%${searchTerm}%`);
+  }
+
   const { data, error } = await dataQuery;
 
   if (error) {
@@ -124,15 +147,32 @@ export async function listFavourites(
     total,
     totalPages,
     artistFilter: artist,
+    searchQuery: search,
   };
 }
 
-export async function listArtistCounts(discordUserId: string): Promise<ArtistCount[]> {
+export async function listArtistCounts(
+  discordUserId: string,
+  options?: { search?: string | null },
+): Promise<ArtistCount[]> {
   await ensureRepairedCredits(discordUserId);
-  const { data, error } = await supabase
+  const search = options?.search?.trim() || null;
+  const searchTerm = search ? sanitizeSearchTerm(search) : '';
+
+  if (search && !searchTerm) {
+    return [];
+  }
+
+  let request = supabase
     .from('favourites')
-    .select('artist')
+    .select('artist, song_title')
     .eq('discord_user_id', discordUserId);
+
+  if (searchTerm) {
+    request = request.or(`song_title.ilike.%${searchTerm}%,artist.ilike.%${searchTerm}%`);
+  }
+
+  const { data, error } = await request;
 
   if (error) {
     logger.error('Failed to list artist counts', { code: error.code, message: error.message });

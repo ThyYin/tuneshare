@@ -31,6 +31,7 @@ export interface PaginatedFavourites {
   total: number;
   totalPages: number;
   artistFilter: string | null;
+  searchQuery: string | null;
 }
 
 export interface ArtistCount {
@@ -45,4 +46,42 @@ export interface PaginatedArtists {
   pageSize: number;
   total: number;
   totalPages: number;
+}
+
+export type AlbumPlatform = 'spotify' | 'deezer';
+
+export interface FavouriteAlbum {
+  id: string;
+  discordUserId: string;
+  albumTitle: string;
+  artist: string;
+  year: string | null;
+  totalTracks: number | null;
+  platform: AlbumPlatform;
+  platformAlbumId: string;
+  url: string;
+  thumbnailUrl: string | null;
+  createdAt: string;
+}
+
+export interface FavouriteAlbumInsert {
+  discordUserId: string;
+  albumTitle: string;
+  artist: string;
+  year: string | null;
+  totalTracks: number | null;
+  platform: AlbumPlatform;
+  platformAlbumId: string;
+  url: string;
+  thumbnailUrl: string | null;
+}
+
+export interface PaginatedFavouriteAlbums {
+  items: FavouriteAlbum[];
+  page: number;
+  pageSize: number;
+  total: number;
+  totalPages: number;
+  artistFilter: string | null;
+  searchQuery: string | null;
 }
