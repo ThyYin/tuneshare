@@ -8,6 +8,7 @@ import {
   type User,
 } from 'discord.js';
 import { COMMAND_PREFIX } from '../constants';
+import { flattenWrappedMusicUrl } from '../services/music/urlInput';
 import type { DisplayNameMember } from './displayName';
 import { UserFacingError, UserMessages } from './errors';
 
@@ -216,16 +217,14 @@ function readPrefixString(name: string, rawArgs: string, optionNames: Set<string
   }
 
   if (name === 'song_url' || name === 'song') {
-    return extractSongUrl(cleaned);
+    return extractMusicUrl(cleaned);
   }
 
   return cleaned;
 }
 
-function extractSongUrl(value: string): string {
-  const withoutBrackets = value.replace(/^<([^>]+)>$/, '$1');
-  const match = withoutBrackets.match(/https?:\/\/[^\s<>]+/i);
-  return match?.[0] ?? withoutBrackets;
+function extractMusicUrl(value: string): string {
+  return flattenWrappedMusicUrl(value);
 }
 
 function unwrapArg(value: string): string {

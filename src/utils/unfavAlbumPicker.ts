@@ -51,7 +51,7 @@ export async function buildUnfavAlbumPickerMessage(options: {
       pageData.items.length > 0
         ? `Pick an album **${startIndex + 1}–${startIndex + pageData.items.length}**:`
         : undefined,
-    embeds: favouriteAlbumsListEmbeds(options.displayName, pageData, true, { title }),
+    embeds: favouriteAlbumsListEmbeds(options.displayName, pageData, true, { title, accent: 'remove' }),
     components: [
       pageData.items.length > 0 ? unfavAlbumPickRow(options.userId, pageData.items, startIndex) : null,
       artistFilterSelectRow(options.userId, artists, resolvedKey, {

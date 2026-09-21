@@ -7,14 +7,14 @@ import { songInfoEmbed } from '../utils/embeds';
 import { UserFacingError, UserMessages } from '../utils/errors';
 import { buildSongSearchMessage } from '../utils/songSearchMessage';
 
-export const info: Command = {
+export const song: Command = {
   data: new SlashCommandBuilder()
-    .setName('info')
+    .setName('song')
     .setDescription('Show cover art, title, artist, year, and listener stats for a song')
     .addStringOption((option) =>
       option
         .setName('song')
-        .setDescription('A song name, or a Spotify / YouTube Music link')
+        .setDescription('A song name, or a Spotify / YouTube Music / SoundCloud link')
         .setRequired(true)
         .setMaxLength(MAX_SONG_URL_LENGTH),
     ),

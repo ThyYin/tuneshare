@@ -15,7 +15,7 @@ export function buildArtistAlbumsMessage(options: {
   profile?: ArtistProfile | null;
 }): CommandReplyPayload {
   return {
-    content: options.albums.items.length > 0 ? 'Pick an album to see its tracks:' : undefined,
+    content: options.albums.items.length > 0 ? 'Pick an album to view its tracks:' : undefined,
     embeds: artistAlbumsEmbeds(options.albums, options.profile),
     components: [
       artistAlbumPickRow(options.userId, options.albums),

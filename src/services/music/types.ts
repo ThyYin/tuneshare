@@ -15,6 +15,8 @@ export interface SongMetadata {
   artist: string;
   album: string | null;
   thumbnailUrl: string | null;
+  resolvedPlatformSongId?: string;
+  resolvedCanonicalUrl?: string;
 }
 
 export interface AudienceStat {

@@ -1,4 +1,4 @@
-export type Platform = 'spotify' | 'youtube_music';
+export type Platform = 'spotify' | 'youtube_music' | 'soundcloud';
 
 export interface Favourite {
   id: string;
@@ -48,7 +48,7 @@ export interface PaginatedArtists {
   totalPages: number;
 }
 
-export type AlbumPlatform = 'spotify' | 'deezer';
+export type AlbumPlatform = 'spotify' | 'deezer' | 'soundcloud';
 
 export interface FavouriteAlbum {
   id: string;

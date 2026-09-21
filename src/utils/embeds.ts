@@ -47,9 +47,10 @@ import {
   type SongSearchAction,
 } from './customIds';
 
-const SPOTIFY_COLOR = 0x1db954;
-const YOUTUBE_COLOR = 0x1db954;
-const DEFAULT_COLOR = 0x5865f2;
+const ADD_COLOR = 0x57f287;
+const REMOVE_COLOR = 0xed4245;
+const LIST_COLOR = 0x9b59b6;
+const HELP_COLOR = 0x99aab5;
 
 const HELP_COMMAND_ORDER = [
   'fav',
@@ -58,7 +59,7 @@ const HELP_COMMAND_ORDER = [
   'favab',
   'favsab',
   'unfavab',
-  'info',
+  'song',
   'album',
   'topartists',
   'artist',
@@ -68,17 +69,17 @@ const HELP_COMMAND_ORDER = [
 ];
 
 const HELP_USAGE_NOTES: Record<string, string> = {
-  fav: 'Favourite a song by typing its name, or paste a Spotify / YT Music song link.',
+  fav: 'Favourite a song by typing its name, or paste a Spotify / YT Music / SoundCloud song link.',
   favs: 'Display your favourited songs, or tag someone to peek at theirs.',
-  unfav: 'Unfavourite a song.\nSlash: start typing to pick it.\nPrefix: `t!unfav` shows your list (artist filter + red Cancel below it).\nSearch your favs with `t!unfav Billie Jean` — same artist filter.',
-  favab: 'Favourite an album by typing its name. Pick from the top 5, or Cancel.',
+  unfav: 'Unfavourite a song. Filter by favourited song name, or leave blank to view entire list to pick to unfavourite. e.g. `t!unfav Billie Jean` returns search results; if none match in your list, will return error.\n\n',
+  favab: 'Favourite an album by typing its name.',
   favsab: 'Display your favourited albums, or tag someone to peek at theirs.',
-  unfavab: 'Unfavourite an album.\n`t!unfavab` shows your list (artist filter + red Cancel).\nSearch with `t!unfavab Thriller`.',
-  info: 'Look up a song by name or paste a Spotify / YT Music link.',
-  album: 'Look up an album by name. Pick from the top 5, then see its tracks.',
+  unfavab: 'Unfavourite an album. Workflow is similar to the `t!unfav` command.\n\n',
+  song: 'Look up song details by name, or paste a Spotify / YT Music / SoundCloud link.',
+  album: 'Look up an album by name. Pick from top 5 search results, then view its tracks.\n\n',
   topartists: 'Display the top artists from your favourited songs by leaving the user blank for your own ranking, or view someone else\'s by mentioning their user.',
-  artist: 'Display an artist\'s info. Type a name, pick from the top 5, or Cancel.',
-  catalog: 'Browse an artist\'s albums. Type a name, pick from the top 5, then pick an album. Cancel is there too.',
+  artist: 'Display an artist\'s info. Type an artist\'s name, pick from top 5 search results.',
+  catalog: 'Browse an artist\'s music catalog. Type an artist\'s name, pick from the top 5 search results, then pick an album.\n\n',
   ping: 'Annie are you okay?',
   help: 'Shows this list.',
 };
@@ -89,6 +90,8 @@ export function platformLabel(platform: Platform): string {
       return 'Spotify';
     case 'youtube_music':
       return 'YouTube Music';
+    case 'soundcloud':
+      return 'SoundCloud';
   }
 }
 
@@ -98,6 +101,8 @@ export function albumPlatformLabel(platform: AlbumPlatform): string {
       return 'Spotify';
     case 'deezer':
       return 'Deezer';
+    case 'soundcloud':
+      return 'SoundCloud';
   }
 }
 
@@ -107,7 +112,7 @@ export function formatAlbum(album: Pick<FavouriteAlbum, 'artist' | 'albumTitle'>
 
 export function addedFavouriteEmbed(favourite: Favourite, metadataMissing: boolean): EmbedBuilder {
   const embed = new EmbedBuilder()
-    .setColor(favourite.platform === 'spotify' ? SPOTIFY_COLOR : YOUTUBE_COLOR)
+    .setColor(ADD_COLOR)
     .setTitle('✅ Added to your favourites')
     .setDescription(
       [
@@ -129,10 +134,6 @@ export function addedFavouriteEmbed(favourite: Favourite, metadataMissing: boole
   return embed;
 }
 
-function platformColor(platform: Platform): number {
-  return platform === 'spotify' ? SPOTIFY_COLOR : YOUTUBE_COLOR;
-}
-
 function applyThumbnail(embed: EmbedBuilder, url: string | null | undefined): void {
   if (url) {
     embed.setThumbnail(url);
@@ -141,7 +142,7 @@ function applyThumbnail(embed: EmbedBuilder, url: string | null | undefined): vo
 
 export function removedFavouriteEmbed(favourite: Favourite): EmbedBuilder {
   const embed = new EmbedBuilder()
-    .setColor(DEFAULT_COLOR)
+    .setColor(REMOVE_COLOR)
     .setTitle('🗑️ Removed from your favourites')
     .setDescription(`🎵 **${formatSong(favourite)}**\n${platformLabel(favourite.platform)}`)
     .setURL(favourite.url);
@@ -152,7 +153,7 @@ export function removedFavouriteEmbed(favourite: Favourite): EmbedBuilder {
 
 export function addedFavouriteAlbumEmbed(album: FavouriteAlbum): EmbedBuilder {
   const embed = new EmbedBuilder()
-    .setColor(album.platform === 'spotify' ? SPOTIFY_COLOR : DEFAULT_COLOR)
+    .setColor(ADD_COLOR)
     .setTitle('✅ Album added to your favourites')
     .setDescription(`💿 **${formatAlbum(album)}**\n${albumPlatformLabel(album.platform)}`)
     .setURL(album.url);
@@ -163,7 +164,7 @@ export function addedFavouriteAlbumEmbed(album: FavouriteAlbum): EmbedBuilder {
 
 export function removedFavouriteAlbumEmbed(album: FavouriteAlbum): EmbedBuilder {
   const embed = new EmbedBuilder()
-    .setColor(DEFAULT_COLOR)
+    .setColor(REMOVE_COLOR)
     .setTitle('🗑️ Album removed from your favourites')
     .setDescription(`💿 **${formatAlbum(album)}**\n${albumPlatformLabel(album.platform)}`)
     .setURL(album.url);
@@ -176,14 +177,15 @@ export function favouritesListEmbeds(
   displayName: string,
   pageData: PaginatedFavourites,
   isOwnList: boolean,
-  options?: { title?: string },
+  options?: { title?: string; accent?: 'list' | 'remove' },
 ): EmbedBuilder[] {
   const title = options?.title ?? `🎵 ${displayName}'s Favourite Songs`;
+  const color = options?.accent === 'remove' ? REMOVE_COLOR : LIST_COLOR;
 
   if (pageData.total === 0) {
     return [
       new EmbedBuilder()
-        .setColor(DEFAULT_COLOR)
+        .setColor(color)
         .setTitle(title)
         .setDescription(
           pageData.artistFilter
@@ -208,7 +210,7 @@ export function favouritesListEmbeds(
   return pageData.items.map((song, index) => {
     const number = start + index + 1;
     const embed = new EmbedBuilder()
-      .setColor(platformColor(song.platform))
+      .setColor(color)
       .setDescription(
         `${number}. **${formatSong(song)}**\n${platformLabel(song.platform)}\n${song.url}`,
       )
@@ -232,14 +234,15 @@ export function favouriteAlbumsListEmbeds(
   displayName: string,
   pageData: PaginatedFavouriteAlbums,
   isOwnList: boolean,
-  options?: { title?: string },
+  options?: { title?: string; accent?: 'list' | 'remove' },
 ): EmbedBuilder[] {
   const title = options?.title ?? `💿 ${displayName}'s Favourite Albums`;
+  const color = options?.accent === 'remove' ? REMOVE_COLOR : LIST_COLOR;
 
   if (pageData.total === 0) {
     return [
       new EmbedBuilder()
-        .setColor(DEFAULT_COLOR)
+        .setColor(color)
         .setTitle(title)
         .setDescription(
           pageData.artistFilter
@@ -274,7 +277,7 @@ export function favouriteAlbumsListEmbeds(
       .join(' · ');
 
     const embed = new EmbedBuilder()
-      .setColor(album.platform === 'spotify' ? SPOTIFY_COLOR : DEFAULT_COLOR)
+      .setColor(color)
       .setDescription(`${number}. **${formatAlbum(album)}**\n${details}\n${album.url}`)
       .setURL(album.url);
 
@@ -295,7 +298,7 @@ export function favouriteAlbumsListEmbeds(
 export function songSearchEmbeds(query: string, results: SongSearchHit[]): EmbedBuilder[] {
   return results.map((song, index) => {
     const embed = new EmbedBuilder()
-      .setColor(platformColor(song.platform))
+      .setColor(LIST_COLOR)
       .setDescription(
         [
           `${index + 1}. **${formatTrack(song.artist, song.title)}**`,
@@ -319,7 +322,7 @@ export function songSearchEmbeds(query: string, results: SongSearchHit[]): Embed
 export function artistSearchEmbeds(query: string, results: ArtistSearchHit[]): EmbedBuilder[] {
   return results.map((artist, index) => {
     const embed = new EmbedBuilder()
-      .setColor(DEFAULT_COLOR)
+      .setColor(LIST_COLOR)
       .setDescription(
         [`${index + 1}. **${truncate(artist.name, 80)}**`, artist.genre ? truncate(artist.genre, 80) : 'Artist']
           .join('\n'),
@@ -361,7 +364,7 @@ export function albumSearchEmbeds(query: string, results: AlbumSearchHit[]): Emb
   return results.map((album, index) => {
     const details = [album.artist, album.albumType, album.year].filter(Boolean).join(' · ');
     const embed = new EmbedBuilder()
-      .setColor(album.source === 'spotify' ? SPOTIFY_COLOR : DEFAULT_COLOR)
+      .setColor(LIST_COLOR)
       .setDescription(`${index + 1}. **${truncate(album.name, 80)}**\n${details || 'Album'}`)
       .setURL(album.pageUrl);
 
@@ -639,7 +642,7 @@ export function artistFilterSelectRow(
 
 export function topArtistsEmbed(displayName: string, pageData: PaginatedArtists): EmbedBuilder {
   const embed = new EmbedBuilder()
-    .setColor(DEFAULT_COLOR)
+    .setColor(LIST_COLOR)
     .setTitle(`🎤 ${displayName}'s Top Artists`);
 
   if (pageData.total === 0) {
@@ -691,7 +694,7 @@ export function artistProfileEmbed(profile: ArtistProfile): EmbedBuilder {
   const passedLabel = profile.isPerson ? 'Passed' : 'Disbanded';
 
   const embed = new EmbedBuilder()
-    .setColor(DEFAULT_COLOR)
+    .setColor(LIST_COLOR)
     .setTitle(truncate(profile.name, 240))
     .setURL(profile.pageUrl)
     .addFields(
@@ -723,7 +726,7 @@ export function artistAlbumsEmbeds(
     if (!profile) {
       embeds.push(
         new EmbedBuilder()
-          .setColor(DEFAULT_COLOR)
+          .setColor(LIST_COLOR)
           .setTitle(truncate(`${pageData.artist.name}'s Catalogue`, 240))
           .setDescription("I couldn't find any albums for this artist.")
           .setURL(pageData.artist.pageUrl),
@@ -748,7 +751,7 @@ export function artistAlbumsEmbeds(
       .join(' · ');
 
     const embed = new EmbedBuilder()
-      .setColor(DEFAULT_COLOR)
+      .setColor(LIST_COLOR)
       .setDescription(`${number}. **${truncate(album.name, 80)}**\n${details || 'Album'}`)
       .setURL(album.pageUrl);
 
@@ -850,8 +853,7 @@ export function artistTracksEmbed(pageData: AlbumTracksPage): EmbedBuilder {
         });
 
   const embed = new EmbedBuilder()
-    .setColor(DEFAULT_COLOR)
-    .setTitle(truncate(pageData.album.name, 240))
+    .setColor(LIST_COLOR)
     .setURL(pageData.album.pageUrl)
     .setDescription(`${details}\n\n${lines.join('\n')}`)
     .setFooter({
@@ -954,7 +956,7 @@ export function helpEmbed(commandList: Command[]): EmbedBuilder {
   });
 
   return new EmbedBuilder()
-    .setColor(DEFAULT_COLOR)
+    .setColor(HELP_COLOR)
     .setTitle('Command Lists')
     .setDescription(
       [
@@ -964,7 +966,7 @@ export function helpEmbed(commandList: Command[]): EmbedBuilder {
         ...lines,
       ].join('\n\n'),
     )
-    .setFooter({ text: 'p.s. Type a song name, or paste a Spotify / YT Music link.' });
+    .setFooter({ text: 'p.s. Type a song name, or paste a Spotify / YT Music / SoundCloud link.' });
 }
 
 function formatCommandUsage(data: {
@@ -997,7 +999,7 @@ export function formatTrack(artist: string, title: string): string {
 
 export function songInfoEmbed(info: SongInfo): EmbedBuilder {
   const embed = new EmbedBuilder()
-    .setColor(info.platform === 'spotify' ? SPOTIFY_COLOR : YOUTUBE_COLOR)
+    .setColor(LIST_COLOR)
     .setTitle(truncate(stripArtistFromTitle(info.title, info.artist), 240))
     .setURL(info.canonicalUrl)
     .setDescription(platformLabel(info.platform));

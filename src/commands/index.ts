@@ -8,7 +8,7 @@ import { favab } from './favab';
 import { favs } from './favs';
 import { favsab } from './favsab';
 import { help } from './help';
-import { info } from './info';
+import { song } from './info';
 import { ping } from './ping';
 import { topartists } from './topartists';
 import { unfav } from './unfav';
@@ -25,7 +25,7 @@ const commandList: Command[] = [
   favab,
   favsab,
   unfavab,
-  info,
+  song,
   album,
   topartists,
   artist,

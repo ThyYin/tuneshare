@@ -7,6 +7,6 @@ export const ping: Command = {
     .setDescription('Check if the bot is online'),
 
   async execute(ctx) {
-    await ctx.reply("Yes I'm alive.");
+    await ctx.reply("Yes I'm alive. <3");
   },
 };

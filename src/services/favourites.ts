@@ -48,6 +48,10 @@ export async function addFavourite(input: FavouriteInsert): Promise<Favourite> {
       throw new UserFacingError(UserMessages.duplicate);
     }
 
+    if (error.code === '23514') {
+      throw new UserFacingError(UserMessages.platformNotEnabled);
+    }
+
     logger.error('Failed to save favourite', { code: error.code, message: error.message });
     throw new UserFacingError(UserMessages.saveFailed);
   }

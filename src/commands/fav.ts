@@ -17,7 +17,7 @@ export const fav: Command = {
     .addStringOption((option) =>
       option
         .setName('song')
-        .setDescription('A song name, or a Spotify / YouTube Music link')
+        .setDescription('A song name, or a Spotify / YouTube Music / SoundCloud link')
         .setRequired(true)
         .setMaxLength(MAX_SONG_URL_LENGTH),
     ),

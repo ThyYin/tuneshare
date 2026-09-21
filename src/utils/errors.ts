@@ -11,9 +11,13 @@ export class UserFacingError extends Error {
 }
 
 export const UserMessages = {
-  invalidUrl: '❌ Please provide a valid Spotify or YouTube Music song link.',
+  invalidUrl: '❌ Please provide a valid Spotify, YouTube Music, or SoundCloud song link.',
   unsupportedPlatform: "❌ That music platform isn't supported yet.",
-  notATrack: '❌ Please send a song link, not a playlist or album.',
+  notATrack: '❌ Please send a song link, not a playlist or album. Use `/favab` or `/album` for albums.',
+  soundcloudNotFound:
+    "❌ I couldn't find that SoundCloud link. Paste it on one line, or double-check that the track is public.",
+  platformNotEnabled:
+    '❌ SoundCloud is not enabled in the database yet. Run the latest `supabase/schema.sql` in the Supabase SQL Editor, then try again.',
   duplicate: 'ℹ️ You already have this song in your favourites.',
   saveFailed: '❌ Something went wrong while saving your favourite. Please try again later.',
   loadFailed: '❌ Something went wrong while loading favourites. Please try again later.',
@@ -23,9 +27,9 @@ export const UserMessages = {
   unfavNotFound: '❌ That song is not in your favourites.',
   unfavEmpty: "❌ You don't have any favourites to remove yet. Add one with `/fav` or `t!fav`.",
   unfavMultiple: '❌ Multiple songs matched. Pick one from the list below.',
-  missingSongUrl: '❌ Type a song name or paste a Spotify / YouTube Music link, like `t!fav Billie Jean`.',
-  missingSongQuery: '❌ Type a song name or paste a Spotify / YouTube Music link, like `t!fav Billie Jean`.',
-  searchNoResults: "❌ I couldn't find that song. Try a different spelling, or paste a Spotify / YouTube Music link.",
+  missingSongUrl: '❌ Type a song name or paste a Spotify / YouTube Music / SoundCloud link, like `t!fav Billie Jean`.',
+  missingSongQuery: '❌ Type a song name or paste a Spotify / YouTube Music / SoundCloud link, like `t!fav Billie Jean`.',
+  searchNoResults: "❌ I couldn't find that song. Try a different spelling, or paste a Spotify / YouTube Music / SoundCloud link.",
   searchFailed: '❌ Something went wrong while searching for that song. Try a link instead.',
   pickerNotYours: '❌ Only the person who ran that command can use those buttons.',
   pickerCancelledFav: '❌ Cancelled — no song was saved.',

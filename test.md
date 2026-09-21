@@ -1,6 +1,6 @@
 **Tunetopia** is a Discord bot for **saving and sharing your favourite songs and albums**.
 
-Type in a song or album name, or paste a Spotify / YT Music track link — boom! Just like that, Tunetopia keeps your personal list of tracks (and albums) you and your pals can browse, filter, and share; the scrumptious **music diary** for your server! 🥞🎶
+Type in a song or album name, or paste a Spotify / YT Music / SoundCloud track link — boom! Just like that, Tunetopia keeps your personal list of tracks (and albums) you and your pals can browse, filter, and share; the scrumptious **music diary** for your server! 🥞🎶
 
 It does **not** join voice channels or play audio. It saves your taste.
 
@@ -9,7 +9,7 @@ It does **not** join voice channels or play audio. It saves your taste.
 ## What you can do
 
 - **Search songs by name** to add into your music diary 🔍
-- **Accept and save songs** from Spotify / YT Music links 🔗
+- **Accept and save songs** from Spotify / YT Music / SoundCloud links 🔗
 - **Browse your song list** with pages + an artist filter 📜
 - **Peek at someone else's favs** with `t!favs @someone` 👀
 - **Favourite albums too**, then browse them the same way 💿
@@ -23,11 +23,11 @@ It does **not** join voice channels or play audio. It saves your taste.
 
 ## Quick start
 
-1. `/fav Blinding Lights` or paste a Spotify / YT Music track link
+1. `/fav Blinding Lights` or paste a Spotify / YT Music / SoundCloud track link
 2. Pick the right result if you searched by name (bot shows the **top 5**). Hit the red **Cancel** if you change your mind.
 3. `/favs` to view your song list — or `/favs @someone` to peek at theirs
 4. `/favab Thriller` to save an album, `/favsab` to see your album list
-5. `/info <song_name_or_link>`, `/album <album_name>`, or `/artist <artist_name>` when you want the lore 😏 — pick from the top 5 if several match
+5. `/song <song_name_or_link>`, `/album <album_name>`, or `/artist <artist_name>` when you want the lore 😏 — pick from the top 5 if several match
 6. `/catalog Michael Jackson` — pick the artist, browse albums, tap one for the tracklist, then **Back**
 
 
@@ -47,7 +47,7 @@ Same commands work with the `t!` prefix, e.g. `t!fav`, `t!help`.
 | `/favab` | Save an album by name. Top 5 picks + a red **Cancel**. |
 | `/favsab` | Your favourite albums, or tag someone to peek at theirs (pages + artist filter) |
 | `/unfavab` | Remove an album. Browse your list (artist filter + red **Cancel**), or search by title |
-| `/info` | Cover, title, artist, album, year, and stats |
+| `/song` | Cover, title, artist, album, year, and stats |
 | `/album` | Type a name, pick from the top 5 (+ red **Cancel**), then see the album's tracks |
 | `/artist` | Type a name, pick from the top 5 (+ red **Cancel**), then see portrait, genre, and years |
 | `/catalog` | Type a name, pick from the top 5 (+ red **Cancel**), then browse albums → songs |
@@ -63,7 +63,7 @@ Songs vs albums, if you forget which command is which:
 | `t!fav` | `t!favab` |
 | `t!unfav` | `t!unfavab` |
 | `t!favs [@user]` | `t!favsab [@user]` |
-| `t!info` | `t!album` |
+| `t!song` | `t!album` |
 
 
 
@@ -116,7 +116,7 @@ Hit **Cancel** on a pick list if you don't want to remove (or save) anything.
 
 ## 💡Good to know
 
-- **Track links only for `/fav`** — Spotify / YT Music *song* links. Album and playlist links won't save. Use `/favab` + an album name for albums.
+- **Track links for `/fav`** — Spotify / YT Music / SoundCloud *song* links. Album and playlist links won't save. Use `/favab` + an album name for albums.
 - **No duplicates** — you can't save the exact same song link or album twice.
 - **Pickers are yours** — only you can press the numbered buttons / Cancel on a search you started.
 - **Not a music player** — no voice channel, no queue, no playback. You'll have to ask Jockie Music for that.

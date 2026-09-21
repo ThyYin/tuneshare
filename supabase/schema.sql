@@ -7,7 +7,7 @@ create table if not exists public.favourites (
   song_title text not null,
   artist text not null,
   album text,
-  platform text not null check (platform in ('spotify', 'youtube_music')),
+  platform text not null check (platform in ('spotify', 'youtube_music', 'soundcloud')),
   platform_song_id text not null,
   url text not null,
   thumbnail_url text,
@@ -28,7 +28,7 @@ create table if not exists public.favourite_albums (
   artist text not null,
   year text,
   total_tracks integer,
-  platform text not null check (platform in ('spotify', 'deezer')),
+  platform text not null check (platform in ('spotify', 'deezer', 'soundcloud')),
   platform_album_id text not null,
   url text not null,
   thumbnail_url text,
@@ -41,3 +41,11 @@ create index if not exists favourite_albums_discord_user_created_at_idx
 
 alter table public.favourite_albums enable row level security;
 
+-- Existing projects: allow SoundCloud on tables that were created before it was supported.
+alter table public.favourites drop constraint if exists favourites_platform_check;
+alter table public.favourites add constraint favourites_platform_check
+  check (platform in ('spotify', 'youtube_music', 'soundcloud'));
+
+alter table public.favourite_albums drop constraint if exists favourite_albums_platform_check;
+alter table public.favourite_albums add constraint favourite_albums_platform_check
+  check (platform in ('spotify', 'deezer', 'soundcloud'));

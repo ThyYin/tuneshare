@@ -4,9 +4,15 @@ import { formatDuration, yearFromDate } from '../../utils/format';
 import { UserFacingError, UserMessages } from '../../utils/errors';
 import { logger } from '../../utils/logger';
 import { asRecord, fetchJson, readArray, readNumber, readRecord, readString } from './http';
+import {
+  fetchSoundCloudAlbumDetails,
+  fetchSoundCloudAlbumTracks,
+  SOUNDCLOUD_ID_PATTERN,
+  type SoundCloudAlbumDetails,
+} from './soundcloud';
 import { getSpotifyAppToken } from './spotifyAuth';
 
-export type CatalogueSource = 'spotify' | 'deezer';
+export type CatalogueSource = 'spotify' | 'deezer' | 'soundcloud';
 
 export interface CatalogueArtist {
   source: CatalogueSource;
@@ -223,7 +229,13 @@ export async function fetchAlbumSearchHit(
     if (source === 'deezer' && DEEZER_ID_PATTERN.test(albumId)) {
       return await fetchDeezerAlbumHit(albumId);
     }
+    if (source === 'soundcloud') {
+      return mapSoundCloudAlbumHit(await fetchSoundCloudAlbumDetails(albumId));
+    }
   } catch (error) {
+    if (error instanceof UserFacingError) {
+      throw error;
+    }
     logger.warn('Album lookup failed', {
       source,
       albumId,
@@ -270,7 +282,13 @@ export async function getAlbumTracks(
     if (source === 'deezer' && DEEZER_ID_PATTERN.test(artistId) && DEEZER_ID_PATTERN.test(albumId)) {
       return await fetchDeezerAlbumTracks(artistId, albumId, page);
     }
+    if (source === 'soundcloud' && SOUNDCLOUD_ID_PATTERN.test(albumId)) {
+      return await fetchSoundCloudAlbumTracksPage(artistId, albumId, page);
+    }
   } catch (error) {
+    if (error instanceof UserFacingError) {
+      throw error;
+    }
     logger.warn('Album track list failed', {
       source,
       artistId,
@@ -784,6 +802,64 @@ async function fetchDeezerAlbumTracks(
     page: safePage,
     pageSize,
     total,
+    totalPages,
+  };
+}
+
+function mapSoundCloudAlbumHit(details: SoundCloudAlbumDetails | null): AlbumSearchHit | null {
+  if (!details) {
+    return null;
+  }
+
+  return {
+    source: 'soundcloud',
+    albumId: details.albumId,
+    artistId: details.artistId,
+    name: details.name,
+    artist: details.artist,
+    year: details.year,
+    totalTracks: details.totalTracks,
+    albumType: details.albumType,
+    thumbnailUrl: details.thumbnailUrl,
+    pageUrl: details.pageUrl,
+  };
+}
+
+async function fetchSoundCloudAlbumTracksPage(
+  artistId: string,
+  albumId: string,
+  page: number,
+): Promise<AlbumTracksPage | null> {
+  const result = await fetchSoundCloudAlbumTracks(albumId, page);
+  if (!result) {
+    return null;
+  }
+
+  const totalPages = result.total === 0 ? 0 : Math.ceil(result.total / ARTIST_TRACKS_PAGE_SIZE);
+  const safePage = totalPages === 0 ? 1 : Math.min(Math.max(1, page), totalPages);
+
+  return {
+    artist: {
+      source: 'soundcloud',
+      artistId: result.details.artistId || artistId,
+      name: result.details.artist,
+      portraitUrl: null,
+      pageUrl: result.details.pageUrl,
+    },
+    album: {
+      source: 'soundcloud',
+      albumId: result.details.albumId,
+      name: result.details.name,
+      year: result.details.year,
+      totalTracks: result.details.totalTracks,
+      albumType: result.details.albumType,
+      thumbnailUrl: result.details.thumbnailUrl,
+      pageUrl: result.details.pageUrl,
+    },
+    items: result.tracks,
+    page: safePage,
+    pageSize: ARTIST_TRACKS_PAGE_SIZE,
+    total: result.total,
     totalPages,
   };
 }

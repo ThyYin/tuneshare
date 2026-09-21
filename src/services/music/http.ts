@@ -1,13 +1,23 @@
 import { METADATA_TIMEOUT_MS } from '../../constants';
 
-export async function fetchJson(
+export class HttpStatusError extends Error {
+  readonly status: number;
+
+  constructor(status: number, message: string) {
+    super(message);
+    this.name = 'HttpStatusError';
+    this.status = status;
+  }
+}
+
+async function fetchJsonValue(
   url: string,
   options?: {
     method?: string;
     headers?: Record<string, string>;
     body?: string;
   },
-): Promise<Record<string, unknown>> {
+): Promise<unknown> {
   const response = await fetch(url, {
     method: options?.method ?? 'GET',
     headers: {
@@ -22,20 +32,47 @@ export async function fetchJson(
   if (!response.ok) {
     const details = await response.text().catch(() => '');
     const snippet = details.replace(/\s+/g, ' ').trim().slice(0, 180);
-    throw new Error(
+    throw new HttpStatusError(
+      response.status,
       snippet
         ? `Request failed with status ${response.status}: ${snippet}`
         : `Request failed with status ${response.status}`,
     );
   }
 
-  const data: unknown = await response.json();
+  return response.json();
+}
 
-  if (typeof data !== 'object' || data === null) {
+export async function fetchJson(
+  url: string,
+  options?: {
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string;
+  },
+): Promise<Record<string, unknown>> {
+  const data = await fetchJsonValue(url, options);
+
+  if (typeof data !== 'object' || data === null || Array.isArray(data)) {
     throw new Error('Response was not a JSON object');
   }
 
   return data as Record<string, unknown>;
+}
+
+export async function fetchJsonArray(
+  url: string,
+  options?: {
+    method?: string;
+    headers?: Record<string, string>;
+    body?: string;
+  },
+): Promise<unknown[]> {
+  const data = await fetchJsonValue(url, options);
+  if (!Array.isArray(data)) {
+    throw new Error('Response was not a JSON array');
+  }
+  return data;
 }
 
 export async function fetchText(

@@ -47,6 +47,10 @@ export async function addFavouriteAlbum(input: FavouriteAlbumInsert): Promise<Fa
       throw new UserFacingError(UserMessages.duplicateAlbum);
     }
 
+    if (error.code === '23514') {
+      throw new UserFacingError(UserMessages.platformNotEnabled);
+    }
+
     logger.error('Failed to save favourite album', { code: error.code, message: error.message });
     throw new UserFacingError(UserMessages.saveFailed);
   }

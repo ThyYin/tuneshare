@@ -9,6 +9,7 @@ export type AlbumSearchAction = 'info' | 'fav';
 
 const SPOTIFY_ID_PATTERN = /^[A-Za-z0-9]{22}$/;
 const DEEZER_ID_PATTERN = /^\d{1,12}$/;
+const SOUNDCLOUD_ID_PATTERN = /^\d{1,18}$/;
 
 export function artistFilterKey(artist: string): string {
   return createHash('sha256').update(artist.trim().toLowerCase()).digest('hex').slice(0, 16);
@@ -85,7 +86,7 @@ export function searchPickButtonId(
   platform: Platform,
   platformSongId: string,
 ): string {
-  return `search:${action}:${userId}:${platform === 'spotify' ? 's' : 'y'}:${platformSongId}`;
+  return `search:${action}:${userId}:${songPlatformCode(platform)}:${platformSongId}`;
 }
 
 export function searchCancelButtonId(action: SongSearchAction, userId: string): string {
@@ -106,12 +107,26 @@ export function parseSearchCancelButtonId(
   };
 }
 
+function songPlatformCode(platform: Platform): 's' | 'y' | 'c' {
+  switch (platform) {
+    case 'spotify':
+      return 's';
+    case 'youtube_music':
+      return 'y';
+    case 'soundcloud':
+      return 'c';
+  }
+}
+
 function parsePlatformSong(code: string, platformSongId: string): { platform: Platform; platformSongId: string } | null {
   if (code === 's' && SPOTIFY_ID_PATTERN.test(platformSongId)) {
     return { platform: 'spotify', platformSongId };
   }
   if (code === 'y' && /^[A-Za-z0-9_-]{11}$/.test(platformSongId)) {
     return { platform: 'youtube_music', platformSongId };
+  }
+  if (code === 'c' && SOUNDCLOUD_ID_PATTERN.test(platformSongId)) {
+    return { platform: 'soundcloud', platformSongId };
   }
 
   return null;
@@ -120,7 +135,7 @@ function parsePlatformSong(code: string, platformSongId: string): { platform: Pl
 export function parseSearchPickButtonId(
   customId: string,
 ): { action: SongSearchAction; userId: string; platform: Platform; platformSongId: string } | null {
-  const match = customId.match(/^search:(fav|info):(\d+):([sy]):([A-Za-z0-9_-]+)$/);
+  const match = customId.match(/^search:(fav|info):(\d+):([syc]):([A-Za-z0-9_-]+)$/);
   if (!match) {
     return null;
   }
@@ -284,8 +299,15 @@ export function loadUnfavSearchQuery(userId: string, token: string): string | nu
 
 const unfavSearchQueries = new Map<string, { query: string; expiresAt: number }>();
 
-export function catalogueSourceCode(source: CatalogueSource): 's' | 'd' {
-  return source === 'spotify' ? 's' : 'd';
+export function catalogueSourceCode(source: CatalogueSource): 's' | 'd' | 'c' {
+  switch (source) {
+    case 'spotify':
+      return 's';
+    case 'deezer':
+      return 'd';
+    case 'soundcloud':
+      return 'c';
+  }
 }
 
 export function parseCatalogueSource(code: string): CatalogueSource | null {
@@ -295,11 +317,21 @@ export function parseCatalogueSource(code: string): CatalogueSource | null {
   if (code === 'd') {
     return 'deezer';
   }
+  if (code === 'c') {
+    return 'soundcloud';
+  }
   return null;
 }
 
 function isValidCatalogueId(source: CatalogueSource, id: string): boolean {
-  return source === 'spotify' ? SPOTIFY_ID_PATTERN.test(id) : DEEZER_ID_PATTERN.test(id);
+  switch (source) {
+    case 'spotify':
+      return SPOTIFY_ID_PATTERN.test(id);
+    case 'deezer':
+      return DEEZER_ID_PATTERN.test(id);
+    case 'soundcloud':
+      return SOUNDCLOUD_ID_PATTERN.test(id);
+  }
 }
 
 export function catalogueAlbumsButtonId(
@@ -314,7 +346,7 @@ export function catalogueAlbumsButtonId(
 export function parseCatalogueAlbumsButtonId(
   customId: string,
 ): { userId: string; source: CatalogueSource; artistId: string; page: number } | null {
-  const match = customId.match(/^cat-alb:(\d+):([sd])([A-Za-z0-9]+):(\d+)$/);
+  const match = customId.match(/^cat-alb:(\d+):([sdc])([A-Za-z0-9]+):(\d+)$/);
   if (!match) {
     return null;
   }
@@ -349,7 +381,7 @@ export function parseCatalogueAlbumPickButtonId(customId: string): {
   albumId: string;
   albumsPage: number;
 } | null {
-  const match = customId.match(/^cat-pick:(\d+):([sd])([A-Za-z0-9]+):([A-Za-z0-9]+):(\d+)$/);
+  const match = customId.match(/^cat-pick:(\d+):([sdc])([A-Za-z0-9]+):([A-Za-z0-9]+):(\d+)$/);
   if (!match) {
     return null;
   }
@@ -387,7 +419,7 @@ export function parseCatalogueTracksButtonId(customId: string): {
   trackPage: number;
   albumsPage: number;
 } | null {
-  const match = customId.match(/^cat-trk:(\d+):([sd])([A-Za-z0-9]+):([A-Za-z0-9]+):(\d+):(\d+)$/);
+  const match = customId.match(/^cat-trk:(\d+):([sdc])([A-Za-z0-9]+):([A-Za-z0-9]+):(\d+):(\d+)$/);
   if (!match) {
     return null;
   }
@@ -424,7 +456,7 @@ export function parseAlbumSearchPickButtonId(customId: string): {
   artistId: string;
   albumId: string;
 } | null {
-  const match = customId.match(/^alb-pick:(info|fav):(\d+):([sd])([A-Za-z0-9]+):([A-Za-z0-9]+)$/);
+  const match = customId.match(/^alb-pick:(info|fav):(\d+):([sdc])([A-Za-z0-9]+):([A-Za-z0-9]+)$/);
   if (!match) {
     return null;
   }
@@ -478,7 +510,7 @@ export function parseAlbumLookupTracksButtonId(customId: string): {
   albumId: string;
   page: number;
 } | null {
-  const match = customId.match(/^alb-trk:(\d+):([sd])([A-Za-z0-9]+):([A-Za-z0-9]+):(\d+)$/);
+  const match = customId.match(/^alb-trk:(\d+):([sdc])([A-Za-z0-9]+):([A-Za-z0-9]+):(\d+)$/);
   if (!match) {
     return null;
   }

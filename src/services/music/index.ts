@@ -2,12 +2,14 @@ import { MAX_SONG_URL_LENGTH } from '../../constants';
 import type { Platform } from '../../types/favourite';
 import { UserFacingError, UserMessages } from '../../utils/errors';
 import { logger } from '../../utils/logger';
+import { soundcloudProvider } from './soundcloud';
 import { spotifyProvider } from './spotify';
 import { stripArtistFromTitle } from './trackCredits';
 import type { MusicProvider, ParsedSongUrl, ResolvedSong, SongInfo } from './types';
+import { flattenWrappedMusicUrl } from './urlInput';
 import { youtubeMusicProvider } from './youtubeMusic';
 
-const providers: MusicProvider[] = [spotifyProvider, youtubeMusicProvider];
+const providers: MusicProvider[] = [spotifyProvider, youtubeMusicProvider, soundcloudProvider];
 
 export function looksLikeMusicUrl(raw: string): boolean {
   const trimmed = unwrapLink(raw);
@@ -27,10 +29,7 @@ export function parsedSongFromParts(platform: Platform, platformSongId: string):
   return {
     platform,
     platformSongId,
-    canonicalUrl:
-      platform === 'spotify'
-        ? `https://open.spotify.com/track/${platformSongId}`
-        : `https://music.youtube.com/watch?v=${platformSongId}`,
+    canonicalUrl: canonicalSongUrl(platform, platformSongId),
   };
 }
 
@@ -79,10 +78,13 @@ export async function hydrateSong(song: ParsedSongUrl): Promise<ResolvedSong> {
     }
 
     const metadata = await provider.fetchMetadata(song);
+    const { resolvedPlatformSongId, resolvedCanonicalUrl, ...rest } = metadata;
 
     return {
       ...song,
-      ...metadata,
+      ...rest,
+      platformSongId: resolvedPlatformSongId ?? song.platformSongId,
+      canonicalUrl: resolvedCanonicalUrl ?? song.canonicalUrl,
       title: stripArtistFromTitle(metadata.title, metadata.artist),
       metadataMissing: false,
     };
@@ -139,8 +141,19 @@ export async function fetchSongInfo(song: ParsedSongUrl): Promise<SongInfo> {
   }
 }
 
+function canonicalSongUrl(platform: Platform, platformSongId: string): string {
+  switch (platform) {
+    case 'spotify':
+      return `https://open.spotify.com/track/${platformSongId}`;
+    case 'youtube_music':
+      return `https://music.youtube.com/watch?v=${platformSongId}`;
+    case 'soundcloud':
+      return `https://api.soundcloud.com/tracks/${platformSongId}`;
+  }
+}
+
 function unwrapLink(value: string): string {
-  return value.trim().replace(/^<([^>]+)>$/, '$1').trim();
+  return flattenWrappedMusicUrl(value);
 }
 
 function toUrl(value: string): URL | null {
