@@ -72,11 +72,11 @@ const HELP_USAGE_NOTES: Record<string, string> = {
   fav: 'Favourite a song by typing its name, or paste a Spotify / YT Music / SoundCloud song link.',
   favs: 'Display your favourited songs, or tag someone to peek at theirs.',
   unfav: 'Unfavourite a song. Filter by favourited song name, or leave blank to view entire list to pick to unfavourite. e.g. `t!unfav Billie Jean` returns search results; if none match in your list, will return error.\n\n',
-  favab: 'Favourite an album by typing its name.',
+  favab: 'Favourite an album by name, or paste a Spotify, YouTube Music, Deezer, or SoundCloud link.',
   favsab: 'Display your favourited albums, or tag someone to peek at theirs.',
   unfavab: 'Unfavourite an album. Workflow is similar to the `t!unfav` command.\n\n',
   song: 'Look up song details by name, or paste a Spotify / YT Music / SoundCloud link.',
-  album: 'Look up an album by name. Pick from top 5 search results, then view its tracks.\n\n',
+  album: 'Look up an album by name or link. Spotify and YouTube Music playlists count too. A link opens the tracklist. A name shows the top 5, then the tracks.\n\n',
   topartists: 'Display the top artists from your favourited songs by leaving the user blank for your own ranking, or view someone else\'s by mentioning their user.',
   artist: 'Display an artist\'s info. Type an artist\'s name, pick from top 5 search results.',
   catalog: 'Browse an artist\'s music catalog. Type an artist\'s name, pick from the top 5 search results, then pick an album.\n\n',
@@ -103,6 +103,8 @@ export function albumPlatformLabel(platform: AlbumPlatform): string {
       return 'Deezer';
     case 'soundcloud':
       return 'SoundCloud';
+    case 'youtube_music':
+      return 'YouTube Music';
   }
 }
 

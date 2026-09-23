@@ -216,7 +216,7 @@ function readPrefixString(name: string, rawArgs: string, optionNames: Set<string
     return null;
   }
 
-  if (name === 'song_url' || name === 'song') {
+  if (name === 'song_url' || name === 'song' || name === 'album') {
     return extractMusicUrl(cleaned);
   }
 

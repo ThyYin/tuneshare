@@ -299,7 +299,7 @@ export function loadUnfavSearchQuery(userId: string, token: string): string | nu
 
 const unfavSearchQueries = new Map<string, { query: string; expiresAt: number }>();
 
-export function catalogueSourceCode(source: CatalogueSource): 's' | 'd' | 'c' {
+export function catalogueSourceCode(source: CatalogueSource): 's' | 'd' | 'c' | 'y' {
   switch (source) {
     case 'spotify':
       return 's';
@@ -307,6 +307,8 @@ export function catalogueSourceCode(source: CatalogueSource): 's' | 'd' | 'c' {
       return 'd';
     case 'soundcloud':
       return 'c';
+    case 'youtube_music':
+      return 'y';
   }
 }
 
@@ -320,6 +322,9 @@ export function parseCatalogueSource(code: string): CatalogueSource | null {
   if (code === 'c') {
     return 'soundcloud';
   }
+  if (code === 'y') {
+    return 'youtube_music';
+  }
   return null;
 }
 
@@ -331,6 +336,8 @@ function isValidCatalogueId(source: CatalogueSource, id: string): boolean {
       return DEEZER_ID_PATTERN.test(id);
     case 'soundcloud':
       return SOUNDCLOUD_ID_PATTERN.test(id);
+    case 'youtube_music':
+      return id === 'yt' || /^[A-Za-z0-9_-]{13,80}$/.test(id);
   }
 }
 
@@ -510,7 +517,7 @@ export function parseAlbumLookupTracksButtonId(customId: string): {
   albumId: string;
   page: number;
 } | null {
-  const match = customId.match(/^alb-trk:(\d+):([sdc])([A-Za-z0-9]+):([A-Za-z0-9]+):(\d+)$/);
+  const match = customId.match(/^alb-trk:(\d+):([sdcy])([A-Za-z0-9_-]+):([A-Za-z0-9_-]+):(\d+)$/);
   if (!match) {
     return null;
   }

@@ -66,6 +66,10 @@ export async function lookupArtistFromPick(
   source: CatalogueSource,
   artistId: string,
 ): Promise<ArtistProfile | null> {
+  if (source === 'youtube_music') {
+    return null;
+  }
+
   if (source === 'spotify') {
     const spotify = await fetchSpotifyArtistById(artistId);
     if (!spotify?.name) {

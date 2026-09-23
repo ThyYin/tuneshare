@@ -1,5 +1,7 @@
 import { SlashCommandBuilder } from 'discord.js';
+import { MAX_SONG_URL_LENGTH } from '../constants';
 import { addFavouriteAlbum } from '../services/albumFavourites';
+import { looksLikeAlbumInput, resolveAlbumFromUrl } from '../services/music/albumUrl';
 import {
   fetchAlbumSearchHit,
   searchCatalogueAlbumsOrThrow,
@@ -8,19 +10,19 @@ import {
 import type { FavouriteAlbum } from '../types/favourite';
 import type { Command } from '../types/command';
 import { buildAlbumSearchMessage } from '../utils/albumSearchMessage';
+import { addedFavouriteAlbumEmbed } from '../utils/embeds';
 import { UserFacingError, UserMessages } from '../utils/errors';
 
 export const favab: Command = {
   data: new SlashCommandBuilder()
     .setName('favab')
-    .setDescription('Save an album to your favourites')
+    .setDescription('Save an album to your favourites by name or link')
     .addStringOption((option) =>
       option
         .setName('album')
-        .setDescription('The album to favourite')
+        .setDescription('An album name, or a Spotify, YouTube Music, Deezer, or SoundCloud link')
         .setRequired(true)
-        .setMinLength(1)
-        .setMaxLength(80),
+        .setMaxLength(MAX_SONG_URL_LENGTH),
     ),
 
   async execute(ctx) {
@@ -29,6 +31,15 @@ export const favab: Command = {
       throw new UserFacingError(UserMessages.missingAlbumQuery);
     }
     await ctx.deferReply();
+
+    if (looksLikeAlbumInput(albumName)) {
+      const hit = await resolveAlbumFromUrl(albumName);
+      const album = await saveAlbumFromPick(ctx.user.id, hit);
+      await ctx.editReply({
+        embeds: [addedFavouriteAlbumEmbed(album)],
+      });
+      return;
+    }
 
     const results = await searchCatalogueAlbumsOrThrow(albumName);
     await ctx.editReply(

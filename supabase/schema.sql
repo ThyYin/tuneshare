@@ -28,7 +28,7 @@ create table if not exists public.favourite_albums (
   artist text not null,
   year text,
   total_tracks integer,
-  platform text not null check (platform in ('spotify', 'deezer', 'soundcloud')),
+  platform text not null check (platform in ('spotify', 'deezer', 'soundcloud', 'youtube_music')),
   platform_album_id text not null,
   url text not null,
   thumbnail_url text,
@@ -48,4 +48,4 @@ alter table public.favourites add constraint favourites_platform_check
 
 alter table public.favourite_albums drop constraint if exists favourite_albums_platform_check;
 alter table public.favourite_albums add constraint favourite_albums_platform_check
-  check (platform in ('spotify', 'deezer', 'soundcloud'));
+  check (platform in ('spotify', 'deezer', 'soundcloud', 'youtube_music'));

@@ -175,7 +175,7 @@ export async function fetchSoundCloudAlbumDetails(idOrUrl: string): Promise<Soun
     return null;
   }
   if (readString(resource, 'kind') === 'track') {
-    throw new UserFacingError(UserMessages.albumNotFound);
+    throw new UserFacingError(UserMessages.songOnAlbumCommand);
   }
   return mapPlaylistDetails(resource);
 }
@@ -199,6 +199,12 @@ export async function fetchSoundCloudAlbumTracks(
   const tracks = rawTracks.slice(from, from + pageSize).map((track, index) => mapAlbumTrack(track, from + index + 1));
 
   return { details, tracks, total };
+}
+
+export function classifySoundCloudUrl(
+  url: URL,
+): { kind: 'track' | 'playlist' | 'unknown'; id: string; canonicalUrl: string } | null {
+  return parseSoundCloudPath(url);
 }
 
 function parseSoundCloudPath(
@@ -311,7 +317,7 @@ async function loadSoundCloudPlaylist(idOrUrl: string): Promise<Record<string, u
 
     const kind = readString(resource, 'kind');
     if (kind === 'track') {
-      throw new UserFacingError(UserMessages.albumNotFound);
+      throw new UserFacingError(UserMessages.songOnAlbumCommand);
     }
     return kind === 'playlist' ? resource : null;
   } catch (error) {

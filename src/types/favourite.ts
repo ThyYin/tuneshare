@@ -48,7 +48,7 @@ export interface PaginatedArtists {
   totalPages: number;
 }
 
-export type AlbumPlatform = 'spotify' | 'deezer' | 'soundcloud';
+export type AlbumPlatform = 'spotify' | 'deezer' | 'soundcloud' | 'youtube_music';
 
 export interface FavouriteAlbum {
   id: string;

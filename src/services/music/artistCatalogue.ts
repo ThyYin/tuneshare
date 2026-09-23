@@ -11,8 +11,18 @@ import {
   type SoundCloudAlbumDetails,
 } from './soundcloud';
 import { getSpotifyAppToken } from './spotifyAuth';
+import {
+  fetchYouTubeAlbum,
+  YOUTUBE_ALBUM_ARTIST_ID,
+  YOUTUBE_PLAYLIST_ID_PATTERN,
+} from './youtubeAlbum';
+import {
+  loadSpotifyEmbedCollection,
+  SPOTIFY_PUBLIC_ARTIST_ID,
+  type SpotifyEmbedCollection,
+} from './spotifyEmbed';
 
-export type CatalogueSource = 'spotify' | 'deezer' | 'soundcloud';
+export type CatalogueSource = 'spotify' | 'deezer' | 'soundcloud' | 'youtube_music';
 
 export interface CatalogueArtist {
   source: CatalogueSource;
@@ -221,16 +231,22 @@ export async function searchCatalogueAlbumsOrThrow(query: string): Promise<Album
 export async function fetchAlbumSearchHit(
   source: CatalogueSource,
   albumId: string,
+  spotifyKind: 'album' | 'playlist' = 'album',
 ): Promise<AlbumSearchHit | null> {
   try {
     if (source === 'spotify' && SPOTIFY_ID_PATTERN.test(albumId)) {
-      return await fetchSpotifyAlbumHit(albumId);
+      return spotifyKind === 'playlist'
+        ? await fetchSpotifyPlaylistHit(albumId)
+        : await fetchSpotifyAlbumHit(albumId);
     }
     if (source === 'deezer' && DEEZER_ID_PATTERN.test(albumId)) {
       return await fetchDeezerAlbumHit(albumId);
     }
     if (source === 'soundcloud') {
       return mapSoundCloudAlbumHit(await fetchSoundCloudAlbumDetails(albumId));
+    }
+    if (source === 'youtube_music' && YOUTUBE_PLAYLIST_ID_PATTERN.test(albumId)) {
+      return mapYouTubeAlbumHit(await fetchYouTubeAlbum(albumId));
     }
   } catch (error) {
     if (error instanceof UserFacingError) {
@@ -284,6 +300,9 @@ export async function getAlbumTracks(
     }
     if (source === 'soundcloud' && SOUNDCLOUD_ID_PATTERN.test(albumId)) {
       return await fetchSoundCloudAlbumTracksPage(artistId, albumId, page);
+    }
+    if (source === 'youtube_music' && YOUTUBE_PLAYLIST_ID_PATTERN.test(albumId)) {
+      return await fetchYouTubeAlbumTracksPage(albumId, page);
     }
   } catch (error) {
     if (error instanceof UserFacingError) {
@@ -419,11 +438,66 @@ async function searchDeezerAlbums(query: string): Promise<AlbumSearchHit[]> {
 }
 
 async function fetchSpotifyAlbumHit(albumId: string): Promise<AlbumSearchHit | null> {
-  const token = await getSpotifyAppToken();
-  const album = await fetchJson(`https://api.spotify.com/v1/albums/${albumId}?market=US`, {
-    headers: { Authorization: `Bearer ${token}` },
-  });
-  return mapSpotifyAlbumHit(album);
+  if (getSpotifyCredentials()) {
+    try {
+      const token = await getSpotifyAppToken();
+      const album = await fetchJson(`https://api.spotify.com/v1/albums/${albumId}?market=US`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const hit = mapSpotifyAlbumHit(album);
+      if (hit) {
+        return hit;
+      }
+    } catch (error) {
+      logger.warn('Spotify album API lookup failed, using public page', {
+        albumId,
+        error: error instanceof Error ? error.message : 'unknown',
+      });
+    }
+  }
+
+  return hitFromSpotifyEmbed(await loadSpotifyEmbedCollection('album', albumId));
+}
+
+async function fetchSpotifyPlaylistHit(playlistId: string): Promise<AlbumSearchHit | null> {
+  if (getSpotifyCredentials()) {
+    try {
+      const token = await getSpotifyAppToken();
+      const playlist = await fetchJson(`https://api.spotify.com/v1/playlists/${playlistId}?market=US`, {
+        headers: { Authorization: `Bearer ${token}` },
+      });
+      const hit = mapSpotifyPlaylistHit(playlist);
+      if (hit) {
+        return hit;
+      }
+    } catch (error) {
+      logger.warn('Spotify playlist API lookup failed, using public page', {
+        playlistId,
+        error: error instanceof Error ? error.message : 'unknown',
+      });
+    }
+  }
+
+  return hitFromSpotifyEmbed(await loadSpotifyEmbedCollection('playlist', playlistId));
+}
+
+function hitFromSpotifyEmbed(embed: SpotifyEmbedCollection | null): AlbumSearchHit | null {
+  if (!embed) {
+    return null;
+  }
+
+  return {
+    source: 'spotify',
+    albumId: embed.id,
+    artistId: SPOTIFY_PUBLIC_ARTIST_ID,
+    name: embed.name,
+    artist: embed.artist,
+    year: embed.year,
+    totalTracks: embed.tracks.length,
+    albumType: embed.kind === 'playlist' ? 'Playlist' : 'Album',
+    thumbnailUrl: embed.thumbnailUrl,
+    pageUrl: embed.pageUrl,
+  };
 }
 
 async function fetchDeezerAlbumHit(albumId: string): Promise<AlbumSearchHit | null> {
@@ -462,6 +536,34 @@ function mapSpotifyAlbumHit(item: unknown): AlbumSearchHit | null {
     albumType: albumTypeLabel(readString(album, 'album_type')),
     thumbnailUrl: cover ? readString(cover, 'url') : null,
     pageUrl: (urls ? readString(urls, 'spotify') : null) ?? `https://open.spotify.com/album/${albumId}`,
+  };
+}
+
+function mapSpotifyPlaylistHit(item: unknown): AlbumSearchHit | null {
+  const playlist = asRecord(item);
+  const albumId = playlist ? readString(playlist, 'id') : null;
+  const name = playlist ? readString(playlist, 'name') : null;
+  if (!playlist || !albumId || !SPOTIFY_ID_PATTERN.test(albumId) || !name) {
+    return null;
+  }
+
+  const owner = readRecord(playlist, 'owner');
+  const images = readArray(playlist, 'images') ?? [];
+  const cover = asRecord(images[0]);
+  const urls = readRecord(playlist, 'external_urls');
+  const tracks = readRecord(playlist, 'tracks');
+
+  return {
+    source: 'spotify',
+    albumId,
+    artistId: SPOTIFY_PUBLIC_ARTIST_ID,
+    name,
+    artist: (owner ? readString(owner, 'display_name') : null) ?? 'Unknown Artist',
+    year: null,
+    totalTracks: tracks ? readNumber(tracks, 'total') : null,
+    albumType: 'Playlist',
+    thumbnailUrl: cover ? readString(cover, 'url') : null,
+    pageUrl: (urls ? readString(urls, 'spotify') : null) ?? `https://open.spotify.com/playlist/${albumId}`,
   };
 }
 
@@ -592,6 +694,69 @@ async function fetchSpotifyAlbums(artistId: string, page: number): Promise<Pagin
 }
 
 async function fetchSpotifyAlbumTracks(
+  artistId: string,
+  albumId: string,
+  page: number,
+): Promise<AlbumTracksPage | null> {
+  if (getSpotifyCredentials() && artistId !== SPOTIFY_PUBLIC_ARTIST_ID) {
+    try {
+      const fromApi = await fetchSpotifyAlbumTracksFromApi(artistId, albumId, page);
+      if (fromApi) {
+        return fromApi;
+      }
+    } catch (error) {
+      logger.warn('Spotify album tracks API failed, using public page', {
+        albumId,
+        error: error instanceof Error ? error.message : 'unknown',
+      });
+    }
+  }
+
+  const embed =
+    (await loadSpotifyEmbedCollection('album', albumId)) ??
+    (await loadSpotifyEmbedCollection('playlist', albumId));
+  return embed ? pageSpotifyEmbedTracks(embed, artistId, page) : null;
+}
+
+function pageSpotifyEmbedTracks(
+  embed: SpotifyEmbedCollection,
+  artistId: string,
+  page: number,
+): AlbumTracksPage {
+  const pageSize = ARTIST_TRACKS_PAGE_SIZE;
+  const total = embed.tracks.length;
+  const totalPages = total === 0 ? 0 : Math.ceil(total / pageSize);
+  const safePage = totalPages === 0 ? 1 : Math.min(Math.max(1, page), totalPages);
+  const from = (safePage - 1) * pageSize;
+  const resolvedArtistId = SPOTIFY_ID_PATTERN.test(artistId) ? artistId : SPOTIFY_PUBLIC_ARTIST_ID;
+
+  return {
+    artist: {
+      source: 'spotify',
+      artistId: resolvedArtistId,
+      name: embed.artist,
+      portraitUrl: null,
+      pageUrl: embed.pageUrl,
+    },
+    album: {
+      source: 'spotify',
+      albumId: embed.id,
+      name: embed.name,
+      year: embed.year,
+      totalTracks: total,
+      albumType: embed.kind === 'playlist' ? 'Playlist' : 'Album',
+      thumbnailUrl: embed.thumbnailUrl,
+      pageUrl: embed.pageUrl,
+    },
+    items: embed.tracks.slice(from, from + pageSize),
+    page: safePage,
+    pageSize,
+    total,
+    totalPages,
+  };
+}
+
+async function fetchSpotifyAlbumTracksFromApi(
   artistId: string,
   albumId: string,
   page: number,
@@ -799,6 +964,63 @@ async function fetchDeezerAlbumTracks(
     artist,
     album: catalogueAlbum,
     items,
+    page: safePage,
+    pageSize,
+    total,
+    totalPages,
+  };
+}
+
+function mapYouTubeAlbumHit(details: Awaited<ReturnType<typeof fetchYouTubeAlbum>>): AlbumSearchHit | null {
+  if (!details) {
+    return null;
+  }
+
+  return {
+    source: 'youtube_music',
+    albumId: details.albumId,
+    artistId: YOUTUBE_ALBUM_ARTIST_ID,
+    name: details.name,
+    artist: details.artist,
+    year: details.year,
+    totalTracks: details.tracks.length,
+    albumType: details.albumType,
+    thumbnailUrl: details.thumbnailUrl,
+    pageUrl: details.pageUrl,
+  };
+}
+
+async function fetchYouTubeAlbumTracksPage(albumId: string, page: number): Promise<AlbumTracksPage | null> {
+  const details = await fetchYouTubeAlbum(albumId);
+  if (!details) {
+    return null;
+  }
+
+  const pageSize = ARTIST_TRACKS_PAGE_SIZE;
+  const total = details.tracks.length;
+  const totalPages = total === 0 ? 0 : Math.ceil(total / pageSize);
+  const safePage = totalPages === 0 ? 1 : Math.min(Math.max(1, page), totalPages);
+  const from = (safePage - 1) * pageSize;
+
+  return {
+    artist: {
+      source: 'youtube_music',
+      artistId: YOUTUBE_ALBUM_ARTIST_ID,
+      name: details.artist,
+      portraitUrl: null,
+      pageUrl: details.pageUrl,
+    },
+    album: {
+      source: 'youtube_music',
+      albumId: details.albumId,
+      name: details.name,
+      year: details.year,
+      totalTracks: total,
+      albumType: details.albumType,
+      thumbnailUrl: details.thumbnailUrl,
+      pageUrl: details.pageUrl,
+    },
+    items: details.tracks.slice(from, from + pageSize),
     page: safePage,
     pageSize,
     total,
